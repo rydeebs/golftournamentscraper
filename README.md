@@ -1,84 +1,79 @@
-# Golf Tournament Scraper
+# Golf Tournament Scraper - Deployment Guide
 
-A simple Streamlit web application for scraping golf tournament data from state golf association websites.
+## Deployment Instructions
 
-## Overview
+We're encountering persistent issues with package dependencies in the full application. This guide provides a step-by-step approach to get a working deployment.
 
-The Golf Tournament Scraper helps golf operations founders extract tournament data (especially one-day tournaments or qualifying rounds) quickly from any state golf association website. The app automatically identifies and categorizes tournaments, detects qualifying events, and provides easy filtering and export options.
+### Step 1: Start with the Bare Minimum
 
-## Features
+1. Use only these two files:
+   - `app.py` - A minimal Streamlit application
+   - `requirements.txt` - Contains only `streamlit`
 
-- Scrapes tournament names, dates, golf course information, and locations
-- Automatically categorizes tournaments (Championship, Qualifier, One-Day)
-- Identifies and extracts qualifying rounds as standalone tournaments
-- Exports data to CSV
-- User-friendly filtering options
-- Real-time progress feedback during scraping
+2. Push these changes to your repository.
 
-## Super Minimal Requirements
+3. This should deploy successfully since it has minimal dependencies.
 
-This application uses only the most essential Python libraries to ensure compatibility with most environments:
+### Step 2: Once Deployed, Gradually Add Functionality
 
-- streamlit==1.24.0
-- requests==2.28.0
-- beautifulsoup4==4.11.0
+After confirming the minimal app works:
 
-## Installation
+1. Add the `requests` library to requirements.txt:
+   ```
+   streamlit
+   requests
+   ```
 
-1. Clone or download this repository:
-```bash
-git clone https://github.com/yourusername/golf-tournament-scraper.git
-cd golf-tournament-scraper
-```
+2. Add basic URL fetching to app.py.
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+3. Push these changes and verify they work.
 
-3. Run the application:
-```bash
-streamlit run app.py
-```
+4. Add the `beautifulsoup4` library to requirements.txt:
+   ```
+   streamlit
+   requests
+   beautifulsoup4
+   ```
 
-## Quick Start
+5. Add basic HTML parsing to app.py.
 
-1. Enter the URL of a golf association tournament page (e.g., https://www.fsga.org/TournamentResults)
-2. Click "Scrape Tournaments"
-3. Use the filters to find specific tournament types or qualifying events
-4. Download the data as CSV
+6. Continue this gradual approach until you have a fully working application.
 
-## Troubleshooting
+### Troubleshooting Tips
 
-If you encounter installation issues, try the following:
+If you encounter errors:
 
-1. Use the provided setup script:
-```bash
-chmod +x setup.sh
-./setup.sh
-```
+1. **Check Logs**: Look for specific error messages about which packages are failing.
 
-2. Ensure you have Python 3.7+ installed
-3. Try installing one dependency at a time:
-```bash
-pip install streamlit==1.24.0
-pip install requests==2.28.0
-pip install beautifulsoup4==4.11.0
-```
+2. **Version Pinning**: Try specifying older versions of packages:
+   ```
+   streamlit==1.22.0
+   requests==2.28.0
+   beautifulsoup4==4.11.0
+   ```
 
-## Customization
+3. **Environmental Variables**: Some hosting platforms allow you to set environment variables to control the build process:
+   ```
+   STREAMLIT_SERVER_PORT=8501
+   ```
 
-The scraper is designed to work with many golf association websites, but some customization might be needed for specific sites. Look for these sections in the code:
+4. **Reduce Requirements**: If adding a specific package causes errors, look for alternatives or simplify your approach.
 
-- `scrape_tournaments`: Main function that identifies tournament elements
-- `scrape_detail_page`: Function that extracts information from detail pages
-- `determine_tournament_type`: Logic to categorize tournaments
-- `parse_date`: Function that handles various date formats
+### Key Insights from Previous Errors
 
-## License
+The main issue appears to be with packages that require compilation, especially:
 
-This project is available under the MIT License.
+- **Pillow**: A dependency of Streamlit that requires zlib development libraries
+- **pandas**: Requires numpy and other compiled dependencies
 
-## Contributing
+By using this incremental approach, we can identify exactly which package is causing problems and find appropriate workarounds.
 
-Contributions are welcome! Please feel free to submit pull requests or open issues if you have suggestions for improvements.
+## Next Steps
+
+Once you have a working deployment with the basic functionality, you can explore these options:
+
+1. Look for pre-built wheels of problematic packages
+2. Use CDN-hosted libraries for data visualization instead of Python libraries
+3. Consider using a different hosting platform with better support for compiled dependencies
+
+Good luck with your deployment!
