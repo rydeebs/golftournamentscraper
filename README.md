@@ -1,92 +1,84 @@
-# Golf Tournament Scraper - Installation Guide
+# Golf Tournament Scraper
 
-## Issue Overview
+A simple Streamlit web application for scraping golf tournament data from state golf association websites.
 
-You're encountering errors when trying to install the Golf Tournament Scraper application, specifically with packages that require C extensions like Pillow and pandas. Based on the error logs, your environment is missing the zlib development library, which is preventing Pillow from building.
+## Overview
 
-## Simplified Installation
+The Golf Tournament Scraper helps golf operations founders extract tournament data (especially one-day tournaments or qualifying rounds) quickly from any state golf association website. The app automatically identifies and categorizes tournaments, detects qualifying events, and provides easy filtering and export options.
 
-I've created a minimal version of the application that requires only three dependencies:
-- streamlit
-- requests
-- beautifulsoup4
+## Features
 
-These packages don't require C compilation and should install cleanly in most environments.
+- Scrapes tournament names, dates, golf course information, and locations
+- Automatically categorizes tournaments (Championship, Qualifier, One-Day)
+- Identifies and extracts qualifying rounds as standalone tournaments
+- Exports data to CSV
+- User-friendly filtering options
+- Real-time progress feedback during scraping
 
-## Installation Steps
+## Super Minimal Requirements
 
-1. First, make sure you have Python 3.7+ installed.
+This application uses only the most essential Python libraries to ensure compatibility with most environments:
 
-2. Create a new directory for your project:
+- streamlit==1.24.0
+- requests==2.28.0
+- beautifulsoup4==4.11.0
+
+## Installation
+
+1. Clone or download this repository:
 ```bash
-mkdir golf-scraper
-cd golf-scraper
+git clone https://github.com/yourusername/golf-tournament-scraper.git
+cd golf-tournament-scraper
 ```
 
-3. Copy the minimal requirements.txt and the minimal-streamlit-app.py files into this directory.
-
-4. Install the dependencies:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-5. Run the application:
+3. Run the application:
 ```bash
-streamlit run minimal-streamlit-app.py
+streamlit run app.py
 ```
 
-## If You Still Encounter Issues
+## Quick Start
 
-If you still have installation problems, you might need to install system-level dependencies. On Ubuntu/Debian systems:
+1. Enter the URL of a golf association tournament page (e.g., https://www.fsga.org/TournamentResults)
+2. Click "Scrape Tournaments"
+3. Use the filters to find specific tournament types or qualifying events
+4. Download the data as CSV
 
+## Troubleshooting
+
+If you encounter installation issues, try the following:
+
+1. Use the provided setup script:
 ```bash
-# Update package lists
-sudo apt-get update
-
-# Install Python development files
-sudo apt-get install -y python3-dev
-
-# Install pip
-sudo apt-get install -y python3-pip
-
-# Install streamlit directly (might work better than through pip)
-pip install --user streamlit
-pip install --user requests
-pip install --user beautifulsoup4
+chmod +x setup.sh
+./setup.sh
 ```
 
-## Using a Pre-built Environment
+2. Ensure you have Python 3.7+ installed
+3. Try installing one dependency at a time:
+```bash
+pip install streamlit==1.24.0
+pip install requests==2.28.0
+pip install beautifulsoup4==4.11.0
+```
 
-Another option is to use a pre-built environment like Google Colab or Streamlit Cloud, where dependencies are already installed:
+## Customization
 
-1. **Streamlit Cloud**: 
-   - Create a GitHub repository with your code
-   - Deploy directly from Streamlit Cloud (https://streamlit.io/cloud)
+The scraper is designed to work with many golf association websites, but some customization might be needed for specific sites. Look for these sections in the code:
 
-2. **Google Colab with Streamlit**:
-   - Create a new Colab notebook
-   - Install and run Streamlit within Colab
-   ```python
-   !pip install streamlit
-   !pip install requests beautifulsoup4
-   
-   # Write your app to a file
-   %%writefile app.py
-   # Paste your application code here
-   
-   # Run streamlit
-   !streamlit run app.py & npx localtunnel --port 8501
-   ```
+- `scrape_tournaments`: Main function that identifies tournament elements
+- `scrape_detail_page`: Function that extracts information from detail pages
+- `determine_tournament_type`: Logic to categorize tournaments
+- `parse_date`: Function that handles various date formats
 
-## Features in the Minimal Version
+## License
 
-The minimal version includes:
-- Tournament scraping from association websites
-- Support for various HTML structures (tables, lists, divs)
-- Detail page scraping
-- Qualifier detection
-- CSV export
-- Progress updates while scraping
-- Filtering by tournament type and qualifier status
+This project is available under the MIT License.
 
-This version avoids dependencies on pandas and Pillow, which were causing the installation issues.
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues if you have suggestions for improvements.
