@@ -8,7 +8,6 @@ import base64
 from urllib.parse import urljoin
 import logging
 import time
-import json
 from datetime import datetime
 
 # Set up logging
@@ -369,7 +368,7 @@ def scrape_tournaments(url, progress_callback=None):
             tournament_data['Golf Course Name'] = course_element.text.strip()
         
         # If we have a detail link, scrape additional information
-        if detail_link:
+        if detail_link and len(tournaments) < 10:  # Limit detail page scraping to avoid rate limiting
             if progress_callback:
                 progress_callback(f"Checking detail page for: {tournament_name}")
                 
@@ -417,6 +416,9 @@ def main():
     
     # Add more UI options in a sidebar
     st.sidebar.header("Scraping Options")
+    
+    # Simple mode toggle
+    simple_mode = st.sidebar.checkbox("Quick Mode (Faster Results)", value=True)
     
     # Debug mode
     debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
@@ -487,9 +489,21 @@ def main():
                                 'Detail URL': t.get('Detail URL', '')
                             })
                         
-                        # Show filtered data
+                        # Show filtered dataframe
                         st.subheader("Tournament Data")
-                        st.write(tournament_data)
+                        # Convert to simpler display format
+                        display_data = []
+                        for t in tournament_data:
+                            display_data.append({
+                                'Name': t['Tournament Name'],
+                                'Date': t['Date'] or 'N/A',
+                                'Course': t['Golf Course Name'] or 'N/A',
+                                'Location': t['Location'] or 'N/A',
+                                'Type': t['Tournament Type'],
+                                'Qualifier': 'Yes' if t['Is Qualifier'] else 'No'
+                            })
+                            
+                        st.write(display_data)
                         
                         # Provide download link
                         st.markdown(get_table_download_link(tournament_data), unsafe_allow_html=True)
@@ -498,21 +512,25 @@ def main():
                         st.subheader("Tournament Statistics")
                         st.write(f"Total Tournaments: {len(tournaments)}")
                         
+                        # Count by type and qualifier status
+                        type_counts = {}
+                        for t in tournaments:
+                            t_type = t.get('Tournament Type', 'Unknown')
+                            if t_type in type_counts:
+                                type_counts[t_type] += 1
+                            else:
+                                type_counts[t_type] = 1
+                        
+                        qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
+                        
+                        # Display stats in columns
                         col1, col2 = st.columns(2)
                         with col1:
-                            type_counts = {}
-                            for t in tournaments:
-                                t_type = t.get('Tournament Type', 'Unknown')
-                                if t_type in type_counts:
-                                    type_counts[t_type] += 1
-                                else:
-                                    type_counts[t_type] = 1
-                            
                             st.write("Tournament Types:")
-                            st.write(type_counts)
+                            for t_type, count in type_counts.items():
+                                st.write(f"- {t_type}: {count}")
                         
                         with col2:
-                            qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
                             st.write(f"Qualifying Events: {qualifier_count}")
                             
                             # Count tournaments by month if date is available
@@ -531,7 +549,8 @@ def main():
                             
                             if months:
                                 st.write("Tournaments by Month:")
-                                st.write(months)
+                                for month, count in months.items():
+                                    st.write(f"- {month}: {count}")
                 except Exception as e:
                     st.error(f"An error occurred during scraping: {str(e)}")
                     if debug_mode:
@@ -543,6 +562,7 @@ def main():
     with st.expander("Tips for Better Results"):
         st.markdown("""
         - For best results, use URLs that point directly to tournament listing pages
+        - The "Quick Mode" option will avoid scraping detail pages, which is faster but might miss some information
         - The scraper works best with standard HTML tables or list structures
         - Some websites may require additional customization to work properly
         - If you encounter errors, try enabling Debug Mode to see more information
