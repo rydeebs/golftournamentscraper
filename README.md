@@ -1,67 +1,92 @@
-# Golf Tournament Scraper
+# Golf Tournament Scraper - Installation Guide
 
-A Streamlit web application that scrapes golf tournament data from state golf association websites.
+## Issue Overview
 
-## Features
+You're encountering errors when trying to install the Golf Tournament Scraper application, specifically with packages that require C extensions like Pillow and pandas. Based on the error logs, your environment is missing the zlib development library, which is preventing Pillow from building.
 
-- Scrapes tournament names, dates, locations, and more from golf association websites
-- Automatically categorizes tournaments (One-Day, Qualifier, Championship)
-- Identifies qualifying rounds as standalone tournaments
-- Exports data to CSV
-- Supports both static and JavaScript-rendered pages (with Selenium)
+## Simplified Installation
 
-## Installation
+I've created a minimal version of the application that requires only three dependencies:
+- streamlit
+- requests
+- beautifulsoup4
 
-1. Clone the repository:
+These packages don't require C compilation and should install cleanly in most environments.
+
+## Installation Steps
+
+1. First, make sure you have Python 3.7+ installed.
+
+2. Create a new directory for your project:
 ```bash
-git clone https://github.com/yourusername/golf-tournament-scraper.git
-cd golf-tournament-scraper
+mkdir golf-scraper
+cd golf-scraper
 ```
 
-2. Install the required packages:
+3. Copy the minimal requirements.txt and the minimal-streamlit-app.py files into this directory.
+
+4. Install the dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Optional: For JavaScript-rendered pages, uncomment and install Selenium dependencies in requirements.txt:
+5. Run the application:
 ```bash
-pip install selenium webdriver-manager
+streamlit run minimal-streamlit-app.py
 ```
 
-## Usage
+## If You Still Encounter Issues
 
-Run the Streamlit app:
+If you still have installation problems, you might need to install system-level dependencies. On Ubuntu/Debian systems:
+
 ```bash
-streamlit run app.py
+# Update package lists
+sudo apt-get update
+
+# Install Python development files
+sudo apt-get install -y python3-dev
+
+# Install pip
+sudo apt-get install -y python3-pip
+
+# Install streamlit directly (might work better than through pip)
+pip install --user streamlit
+pip install --user requests
+pip install --user beautifulsoup4
 ```
 
-Then open your browser and navigate to the displayed URL (typically http://localhost:8501).
+## Using a Pre-built Environment
 
-### Using the App
+Another option is to use a pre-built environment like Google Colab or Streamlit Cloud, where dependencies are already installed:
 
-1. Enter the URL of a golf association tournament page
-2. Toggle the Selenium option if the page is JavaScript-rendered
-3. Click "Scrape Tournaments" to start the scraping process
-4. View the results and download as CSV if desired
+1. **Streamlit Cloud**: 
+   - Create a GitHub repository with your code
+   - Deploy directly from Streamlit Cloud (https://streamlit.io/cloud)
 
-## Example URLs
+2. **Google Colab with Streamlit**:
+   - Create a new Colab notebook
+   - Install and run Streamlit within Colab
+   ```python
+   !pip install streamlit
+   !pip install requests beautifulsoup4
+   
+   # Write your app to a file
+   %%writefile app.py
+   # Paste your application code here
+   
+   # Run streamlit
+   !streamlit run app.py & npx localtunnel --port 8501
+   ```
 
-- Florida State Golf Association: https://www.fsga.org/TournamentResults
-- Other state golf associations will have similar structures
+## Features in the Minimal Version
 
-## Customization
+The minimal version includes:
+- Tournament scraping from association websites
+- Support for various HTML structures (tables, lists, divs)
+- Detail page scraping
+- Qualifier detection
+- CSV export
+- Progress updates while scraping
+- Filtering by tournament type and qualifier status
 
-The scraper is designed to be adaptable to different websites, but may require adjustments for specific sites with unusual structures. Look for these sections in the code to customize:
-
-- `scrape_tournaments`: Main function that identifies tournament elements
-- `scrape_detail_page`: Function that scrapes additional information from detail pages
-- `determine_tournament_type`: Logic to categorize tournaments
-- `parse_date`: Function that handles various date formats
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+This version avoids dependencies on pandas and Pillow, which were causing the installation issues.
