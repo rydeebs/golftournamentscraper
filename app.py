@@ -1,42 +1,35 @@
 import streamlit as st
 import requests
-import pandas as pd
 from bs4 import BeautifulSoup
 import re
-from datetime import datetime
-import time
+import csv
+import io
 import base64
 from urllib.parse import urljoin
 import logging
+import time
+import json
+from datetime import datetime
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Flag to track if Selenium is available (default to False)
-selenium_available = False
-
-# Only attempt to import Selenium if explicitly requested
-def load_selenium_if_needed():
-    global selenium_available
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        selenium_available = True
-        return True
-    except ImportError:
-        st.warning("Selenium is not installed. For JavaScript-rendered pages, run: pip install selenium webdriver-manager")
-        return False
-
 # Function to download data as CSV
-def get_table_download_link(df):
-    """Generates a link allowing the data in a given pandas dataframe to be downloaded"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
+def get_table_download_link(data):
+    """Generates a link allowing the data to be downloaded as CSV"""
+    csv_string = io.StringIO()
+    writer = csv.writer(csv_string)
+    
+    # Write header
+    if data and len(data) > 0:
+        writer.writerow(data[0].keys())
+        # Write rows
+        for item in data:
+            writer.writerow(item.values())
+    
+    csv_string = csv_string.getvalue()
+    b64 = base64.b64encode(csv_string.encode()).decode()
     href = f'<a href="data:file/csv;base64,{b64}" download="tournament_data.csv">Download CSV file</a>'
     return href
 
@@ -66,68 +59,16 @@ def is_qualifier(name, description=""):
     
     return any(qualifier in combined for qualifier in ['qualifier', 'qualifying', 'q-school'])
 
-# Function to get HTML content using requests or fallback to Selenium
-def get_page_html(url, use_selenium=False):
-    """Get HTML content from URL using requests or Selenium if needed"""
-    if not use_selenium:
-        try:
-            # Add common browser headers to avoid being blocked
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Cache-Control': 'max-age=0'
-            }
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
-            return response.text
-        except (requests.RequestException, requests.Timeout) as e:
-            logger.warning(f"Request failed: {e}")
-            if use_selenium and load_selenium_if_needed():
-                logger.info("Attempting to use Selenium")
-                return get_page_html_with_selenium(url)
-            else:
-                st.error(f"Failed to fetch data from {url}.")
-                return None
-    else:
-        if load_selenium_if_needed():
-            return get_page_html_with_selenium(url)
-        else:
-            st.error("Selenium is not available. Please install it to handle JavaScript-rendered pages.")
-            return None
-
-def get_page_html_with_selenium(url):
-    """Get HTML content using Selenium for JavaScript-rendered pages"""
-    # Import here to avoid issues if Selenium is not installed
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    
-    try:
-        driver = webdriver.Chrome(options=options)
-        driver.get(url)
-        # Wait for the page to load
-        time.sleep(5)
-        html = driver.page_source
-        driver.quit()
-        return html
-    except Exception as e:
-        logger.error(f"Selenium error: {e}")
-        return None
-
 # Function to parse date string into a standardized format
 def parse_date(date_string):
     """Parse various date formats into a standardized format"""
+    if not date_string:
+        return None
+        
     date_string = date_string.strip()
     
     # Handle common date formats
-    formats = [
+    date_formats = [
         '%B %d, %Y',  # January 1, 2023
         '%b %d, %Y',  # Jan 1, 2023
         '%m/%d/%Y',   # 01/01/2023
@@ -137,7 +78,7 @@ def parse_date(date_string):
         '%d %b %Y',   # 1 Jan 2023
     ]
     
-    for date_format in formats:
+    for date_format in date_formats:
         try:
             parsed_date = datetime.strptime(date_string, date_format)
             return parsed_date.strftime('%Y-%m-%d')  # Return in ISO format
@@ -165,12 +106,32 @@ def parse_date(date_string):
 # Function to extract location from a text string
 def extract_location(text):
     """Extract city and state from location text"""
+    if not text:
+        return None
+        
     # Look for patterns like "City, ST" or "City, State"
     location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', text)
     if location_match:
         city, state = location_match.groups()
         return f"{city.strip()}, {state.strip()}"
     return text.strip()
+
+# Function to get HTML content using requests
+def get_page_html(url):
+    """Get HTML content from URL using requests"""
+    try:
+        # Add common browser headers to avoid being blocked
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        return response.text
+    except (requests.RequestException, requests.Timeout) as e:
+        logger.warning(f"Request failed: {e}")
+        st.error(f"Failed to fetch data from {url}. Error: {str(e)}")
+        return None
 
 # Function to scrape tournament details from detail page
 def scrape_detail_page(detail_url, base_url):
@@ -185,36 +146,61 @@ def scrape_detail_page(detail_url, base_url):
     soup = BeautifulSoup(html, 'html.parser')
     details = {}
     
-    # Look for course name - This will be site-specific and may need adjustment
-    course_element = soup.find('h2') or soup.find('h3') or soup.find(class_='venue')
-    if course_element:
-        details['Golf Course Name'] = course_element.text.strip()
+    # Look for course name
+    course_elements = [
+        soup.find('h2'),
+        soup.find('h3'),
+        soup.find(class_='venue'),
+        soup.find(string=re.compile(r'(?:Golf Club|Country Club|Course)')),
+        soup.find('p', string=re.compile(r'(?:Golf Club|Country Club|Course)'))
+    ]
     
-    # Look for location - This will be site-specific
-    location_element = soup.find(class_='location') or soup.find(string=re.compile(r'[A-Za-z\s]+,\s*[A-Z]{2}'))
-    if location_element:
-        details['Location'] = extract_location(location_element.text)
+    for element in course_elements:
+        if element and element.text.strip():
+            details['Golf Course Name'] = element.text.strip()
+            break
+    
+    # Look for location
+    location_elements = [
+        soup.find(class_='location'),
+        soup.find(string=re.compile(r'[A-Za-z\s]+,\s*[A-Z]{2}')),
+        soup.find('p', string=re.compile(r'[A-Za-z\s]+,\s*[A-Z]{2}'))
+    ]
+    
+    for element in location_elements:
+        if element and element.text.strip():
+            details['Location'] = extract_location(element.text)
+            break
     
     # Look for more detailed description
-    description_element = soup.find(class_='description') or soup.find(class_='tournament-description')
-    if description_element:
-        details['Description'] = description_element.text.strip()
+    description_elements = [
+        soup.find(class_='description'),
+        soup.find(class_='tournament-description'),
+        soup.find('div', id=re.compile(r'description')),
+        soup.find('p', class_=re.compile(r'desc'))
+    ]
     
-    # Look for qualifying rounds if this is a championship
-    qualifying_sections = []
-    qualifier_elements = soup.find_all(string=re.compile(r'Qualify|Qualifier|Qualifying'))
+    for element in description_elements:
+        if element and element.text.strip():
+            details['Description'] = element.text.strip()
+            break
     
-    for element in qualifier_elements:
-        parent = element.parent
-        # Look for nearby elements that might contain qualifier info
-        section = parent.find_next('div') or parent.find_next('p') or parent.find_next('table')
-        if section:
-            qualifying_sections.append(section)
+    # Look for qualifying rounds
+    qualifier_sections = []
+    qualifier_patterns = ['Qualify', 'Qualifier', 'Qualifying']
+    
+    for pattern in qualifier_patterns:
+        elements = soup.find_all(string=re.compile(pattern, re.IGNORECASE))
+        for element in elements:
+            parent = element.parent
+            # Look for nearby elements that might contain qualifier info
+            section = parent.find_next('div') or parent.find_next('p') or parent.find_next('table')
+            if section:
+                qualifier_sections.append(section)
     
     qualifiers = []
-    for section in qualifying_sections:
-        # Extract qualifier info (this is highly dependent on the site structure)
-        # For example, look for date, location, course name
+    for section in qualifier_sections:
+        # Extract qualifier info
         qualifier_info = {
             'Name': None,
             'Date': None,
@@ -240,17 +226,17 @@ def scrape_detail_page(detail_url, base_url):
     return details
 
 # Main function to scrape tournament list
-def scrape_tournaments(url, use_selenium=False, simple_mode=True, progress_callback=None):
+def scrape_tournaments(url, progress_callback=None):
     """Main function to scrape tournament list from association website"""
     if progress_callback:
         progress_callback(f"Starting to scrape: {url}")
     
     # Get HTML content
-    html = get_page_html(url, use_selenium=use_selenium)
+    html = get_page_html(url)
     if not html:
         if progress_callback:
             progress_callback("Failed to get HTML content")
-        return pd.DataFrame()
+        return []
     
     if progress_callback:
         progress_callback("Parsing HTML and looking for tournaments...")
@@ -258,61 +244,49 @@ def scrape_tournaments(url, use_selenium=False, simple_mode=True, progress_callb
     # Parse HTML
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Different strategies based on simple_mode
-    if simple_mode:
-        # Simple mode: Look for tables first, then lists, then generic containers
-        tournament_elements = []
+    # Find potential tournament elements using different strategies
+    tournament_elements = []
+    
+    # Strategy 1: Look for tables
+    tables = soup.find_all('table')
+    if tables and progress_callback:
+        progress_callback(f"Found {len(tables)} tables. Analyzing...")
+    
+    for table in tables:
+        rows = table.find_all('tr')
+        if len(rows) > 1:  # Skip tables with only header row
+            tournament_elements.extend(rows[1:])  # Skip header row
+    
+    # Strategy 2: Look for lists if no tables or tables didn't yield enough
+    if len(tournament_elements) < 3:
+        lists = soup.find_all(['ul', 'ol'])
+        if lists and progress_callback:
+            progress_callback(f"Found {len(lists)} lists. Analyzing...")
         
-        # Strategy 1: Look for tables
-        tables = soup.find_all('table')
-        if tables:
-            if progress_callback:
-                progress_callback(f"Found {len(tables)} tables. Analyzing...")
-            
-            for table in tables:
-                rows = table.find_all('tr')
-                if len(rows) > 1:  # Skip tables with only header row
-                    tournament_elements.extend(rows[1:])  # Skip header row
+        for list_element in lists:
+            items = list_element.find_all('li')
+            if len(items) > 3:  # Only consider lists with several items
+                tournament_elements.extend(items)
+    
+    # Strategy 3: Look for specific div patterns if still not enough
+    if len(tournament_elements) < 3:
+        if progress_callback:
+            progress_callback("Looking for div patterns...")
         
-        # Strategy 2: Look for lists if no tables or tables didn't yield enough
-        if len(tournament_elements) < 3:
-            lists = soup.find_all(['ul', 'ol'])
-            if lists:
-                if progress_callback:
-                    progress_callback(f"Found {len(lists)} lists. Analyzing...")
-                
-                for list_element in lists:
-                    items = list_element.find_all('li')
-                    if len(items) > 3:  # Only consider lists with several items
-                        tournament_elements.extend(items)
+        # Common patterns in tournament listings
+        patterns = [
+            ['div', {'class': lambda c: c and ('tournament' in c.lower() or 'event' in c.lower())}],
+            ['div', {'class': lambda c: c and ('item' in c.lower() or 'result' in c.lower())}],
+            ['article', {}],
+            ['section', {'class': lambda c: c and ('list' in c.lower() or 'results' in c.lower())}]
+        ]
         
-        # Strategy 3: Look for specific div patterns if still not enough
-        if len(tournament_elements) < 3:
-            if progress_callback:
-                progress_callback("Looking for div patterns...")
-            
-            # Common patterns in tournament listings
-            patterns = [
-                ['div', {'class': lambda c: c and ('tournament' in c.lower() or 'event' in c.lower())}],
-                ['div', {'class': lambda c: c and ('item' in c.lower() or 'result' in c.lower())}],
-                ['article', {}],
-                ['section', {'class': lambda c: c and ('list' in c.lower() or 'results' in c.lower())}]
-            ]
-            
-            for selector, attrs in patterns:
-                elements = soup.find_all(selector, attrs)
-                if elements:
-                    tournament_elements.extend(elements)
-                    if len(tournament_elements) > 10:
-                        break
-    else:
-        # Advanced mode: Use more targeted selectors
-        # Find tournament elements - This will be site-specific and may need adjustment
-        tournament_elements = (
-            soup.find_all(class_=['tournament', 'event', 'tournament-item']) or 
-            soup.find_all('tr') or 
-            soup.find_all('div', class_=lambda c: c and ('event' in c.lower() or 'tournament' in c.lower()))
-        )
+        for selector, attrs in patterns:
+            elements = soup.find_all(selector, attrs)
+            if elements:
+                tournament_elements.extend(elements)
+                if len(tournament_elements) > 10:
+                    break
     
     if progress_callback:
         progress_callback(f"Found {len(tournament_elements)} potential tournament elements")
@@ -327,7 +301,7 @@ def scrape_tournaments(url, use_selenium=False, simple_mode=True, progress_callb
         if progress_callback and i % 5 == 0:
             progress_callback(f"Processing element {i+1} of {len(tournament_elements)}...")
         
-        # Extract basic information - This will be site-specific and may need adjustment
+        # Extract basic information
         tournament_name_element = (
             element.find('h3') or 
             element.find('h4') or 
@@ -394,8 +368,8 @@ def scrape_tournaments(url, use_selenium=False, simple_mode=True, progress_callb
         if course_element:
             tournament_data['Golf Course Name'] = course_element.text.strip()
         
-        # If we have a detail link and we're not in simple mode, scrape additional information
-        if detail_link and not simple_mode:
+        # If we have a detail link, scrape additional information
+        if detail_link:
             if progress_callback:
                 progress_callback(f"Checking detail page for: {tournament_name}")
                 
@@ -419,6 +393,12 @@ def scrape_tournaments(url, use_selenium=False, simple_mode=True, progress_callb
                         'Detail URL': detail_link  # Use main tournament detail link
                     }
                     tournaments.append(qualifier_data)
+        
+        # Add tournament to list
+        tournaments.append(tournament_data)
+    
+    logger.info(f"Scraped {len(tournaments)} tournaments")
+    return tournaments
 
 # Streamlit UI
 def main():
@@ -437,16 +417,6 @@ def main():
     
     # Add more UI options in a sidebar
     st.sidebar.header("Scraping Options")
-    
-    # Simple mode toggle
-    simple_mode = st.sidebar.checkbox("Simple Mode (More Compatible)", value=True)
-    
-    # Checkbox for using Selenium
-    use_selenium = st.sidebar.checkbox("Use Selenium for JavaScript-rendered pages", value=False)
-    if use_selenium:
-        if not load_selenium_if_needed():
-            st.sidebar.error("Selenium not available. Install with: pip install selenium webdriver-manager")
-            use_selenium = False
     
     # Debug mode
     debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
@@ -477,66 +447,91 @@ def main():
                     def progress_callback(message):
                         progress_placeholder.text(message)
                     
-                    # Pass the callback and options to the scraper
-                    df = scrape_tournaments(url, 
-                                           use_selenium=use_selenium,
-                                           simple_mode=simple_mode,
-                                           progress_callback=progress_callback)
+                    # Perform scraping
+                    tournaments = scrape_tournaments(url, progress_callback=progress_callback)
                     
                     # Clear progress message
                     progress_placeholder.empty()
                     
-                    if df is None or df.empty:
+                    if not tournaments:
                         st.error("No tournament data found. The website structure might not be supported.")
                     else:
                         # Display results
-                        st.success(f"Found {len(df)} tournaments")
+                        st.success(f"Found {len(tournaments)} tournaments")
                         
                         # Add filter options
                         st.subheader("Filter Results")
-                        tournament_types = ["All"] + list(df['Tournament Type'].unique())
+                        tournament_types = ["All"] + list(set(t['Tournament Type'] for t in tournaments if t.get('Tournament Type')))
                         selected_type = st.selectbox("Tournament Type", tournament_types)
                         
                         show_qualifiers = st.checkbox("Show Only Qualifiers", value=False)
                         
                         # Apply filters
-                        filtered_df = df.copy()
+                        filtered_tournaments = tournaments.copy()
                         if selected_type != "All":
-                            filtered_df = filtered_df[filtered_df['Tournament Type'] == selected_type]
+                            filtered_tournaments = [t for t in filtered_tournaments if t.get('Tournament Type') == selected_type]
                         
                         if show_qualifiers:
-                            filtered_df = filtered_df[filtered_df['Is Qualifier'] == True]
+                            filtered_tournaments = [t for t in filtered_tournaments if t.get('Is Qualifier')]
                         
-                        # Show filtered dataframe
+                        # Convert to list of dicts for display
+                        tournament_data = []
+                        for t in filtered_tournaments:
+                            tournament_data.append({
+                                'Tournament Name': t.get('Tournament Name', ''),
+                                'Date': t.get('Date', ''),
+                                'Golf Course Name': t.get('Golf Course Name', ''),
+                                'Location': t.get('Location', ''),
+                                'Tournament Type': t.get('Tournament Type', ''),
+                                'Is Qualifier': t.get('Is Qualifier', False),
+                                'Detail URL': t.get('Detail URL', '')
+                            })
+                        
+                        # Show filtered data
                         st.subheader("Tournament Data")
-                        st.dataframe(filtered_df)
+                        st.write(tournament_data)
                         
                         # Provide download link
-                        st.markdown(get_table_download_link(filtered_df), unsafe_allow_html=True)
+                        st.markdown(get_table_download_link(tournament_data), unsafe_allow_html=True)
                         
                         # Display some stats
                         st.subheader("Tournament Statistics")
-                        st.write(f"Total Tournaments: {len(df)}")
+                        st.write(f"Total Tournaments: {len(tournaments)}")
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            types = df['Tournament Type'].value_counts()
+                            type_counts = {}
+                            for t in tournaments:
+                                t_type = t.get('Tournament Type', 'Unknown')
+                                if t_type in type_counts:
+                                    type_counts[t_type] += 1
+                                else:
+                                    type_counts[t_type] = 1
+                            
                             st.write("Tournament Types:")
-                            st.write(types)
+                            st.write(type_counts)
                         
                         with col2:
-                            qualifier_count = df['Is Qualifier'].sum()
+                            qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
                             st.write(f"Qualifying Events: {qualifier_count}")
                             
                             # Count tournaments by month if date is available
-                            if 'Date' in df.columns and df['Date'].notna().any():
-                                try:
-                                    df['Month'] = pd.to_datetime(df['Date']).dt.month_name()
-                                    months = df['Month'].value_counts()
-                                    st.write("Tournaments by Month:")
-                                    st.write(months)
-                                except:
-                                    pass  # Skip if dates can't be parsed
+                            months = {}
+                            for t in tournaments:
+                                if t.get('Date') and '-' in t.get('Date', ''):
+                                    try:
+                                        month_num = int(t['Date'].split('-')[1])
+                                        month_name = datetime(2000, month_num, 1).strftime('%B')
+                                        if month_name in months:
+                                            months[month_name] += 1
+                                        else:
+                                            months[month_name] = 1
+                                    except (ValueError, IndexError):
+                                        pass
+                            
+                            if months:
+                                st.write("Tournaments by Month:")
+                                st.write(months)
                 except Exception as e:
                     st.error(f"An error occurred during scraping: {str(e)}")
                     if debug_mode:
@@ -548,10 +543,9 @@ def main():
     with st.expander("Tips for Better Results"):
         st.markdown("""
         - For best results, use URLs that point directly to tournament listing pages
-        - If the page doesn't load properly, try enabling the Selenium option
-        - Some websites may require additional customization to work properly
-        - If a website is heavily JavaScript-based, Selenium is required
         - The scraper works best with standard HTML tables or list structures
+        - Some websites may require additional customization to work properly
+        - If you encounter errors, try enabling Debug Mode to see more information
         """)
         
     # Add footer
