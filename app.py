@@ -1,23 +1,33 @@
 import streamlit as st
 import requests
-import pandas as pd
 from bs4 import BeautifulSoup
 import re
+import csv
+import io
 import base64
 from urllib.parse import urljoin
 import logging
 from datetime import datetime
-import io
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Function to download data as CSV
-def get_table_download_link(df):
-    """Generates a link allowing the data in a given pandas dataframe to be downloaded"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
+def get_table_download_link(data):
+    """Generates a link allowing the data to be downloaded as CSV"""
+    csv_string = io.StringIO()
+    writer = csv.writer(csv_string)
+    
+    # Write header
+    if data and len(data) > 0:
+        writer.writerow(data[0].keys())
+        # Write rows
+        for item in data:
+            writer.writerow(item.values())
+    
+    csv_string = csv_string.getvalue()
+    b64 = base64.b64encode(csv_string.encode()).decode()
     href = f'<a href="data:file/csv;base64,{b64}" download="tournament_data.csv">Download CSV file</a>'
     return href
 
@@ -126,7 +136,7 @@ def scrape_tournaments(url):
     # Get HTML content
     html = get_page_html(url)
     if not html:
-        return pd.DataFrame()
+        return []
         
     # Parse HTML
     soup = BeautifulSoup(html, 'html.parser')
@@ -224,132 +234,117 @@ def scrape_tournaments(url):
         # Add tournament to list
         tournaments.append(tournament_data)
     
-    # Convert list of dictionaries to DataFrame
-    df = pd.DataFrame(tournaments)
-    
-    # Clean up the DataFrame
-    if not df.empty:
-        # Fill missing values
-        df['Tournament Type'] = df['Tournament Type'].fillna('Championship')
-        df['Is Qualifier'] = df['Is Qualifier'].fillna(False)
-    
-    return df
+    return tournaments
 
-# Streamlit UI
+# Create a simple placeholder app that helps troubleshoot issues
 def main():
     st.title("Golf Tournament Scraper")
     
     st.markdown("""
-    This app scrapes tournament data from state golf association websites.
+    ## Welcome to the Golf Tournament Scraper!
     
-    **Instructions:**
-    1. Enter the URL of a tournament results page
-    2. Click "Scrape Tournaments"
-    3. Filter and download the results
+    This simple version is designed to work in any environment.
+    Enter a URL below and click the button to test basic functionality.
     """)
     
     # Input for URL
     url = st.text_input(
-        "Enter Tournament Page URL",
+        "Enter a URL to test",
         value="https://www.fsga.org/TournamentResults"
     )
     
-    # Button to start scraping
-    if st.button("Scrape Tournaments"):
-        if url:
-            with st.spinner('Scraping data...'):
-                try:
-                    # Perform scraping
-                    df = scrape_tournaments(url)
-                    
-                    if df.empty:
-                        st.error("No tournament data found. The website structure might not be supported.")
-                    else:
-                        # Display results
-                        st.success(f"Found {len(df)} tournaments")
-                        
-                        # Add filter options
-                        st.subheader("Filter Results")
-                        tournament_types = ["All"] + list(df['Tournament Type'].unique())
-                        selected_type = st.selectbox("Tournament Type", tournament_types)
-                        
-                        show_qualifiers = st.checkbox("Show Only Qualifiers", value=False)
-                        
-                        # Apply filters
-                        filtered_df = df.copy()
-                        if selected_type != "All":
-                            filtered_df = filtered_df[filtered_df['Tournament Type'] == selected_type]
-                        
-                        if show_qualifiers:
-                            filtered_df = filtered_df[filtered_df['Is Qualifier'] == True]
-                        
-                        # Show filtered data
-                        st.subheader("Tournament Data")
-                        # Create a display DataFrame with nicer column names
-                        display_df = filtered_df.copy()
-                        display_df = display_df.rename(columns={
-                            'Tournament Name': 'Name',
-                            'Tournament Type': 'Type'
-                        })
-                        display_df['Qualifier'] = display_df['Is Qualifier'].apply(lambda x: 'Yes' if x else 'No')
-                        
-                        # Select columns to display
-                        display_columns = ['Name', 'Date', 'Location', 'Type', 'Qualifier']
-                        display_df = display_df[display_columns]
-                        
-                        # Replace missing values with 'N/A' for display
-                        display_df = display_df.fillna('N/A')
-                        
-                        # Show the data
-                        st.dataframe(display_df)
-                        
-                        # Provide download link
-                        st.markdown(get_table_download_link(filtered_df), unsafe_allow_html=True)
-                        
-                        # Display some stats
-                        st.subheader("Tournament Statistics")
-                        st.write(f"Total Tournaments: {len(df)}")
-                        
-                        # Tournament type counts
-                        st.write("Tournament Types:")
-                        type_counts = df['Tournament Type'].value_counts()
-                        for t_type, count in type_counts.items():
-                            st.write(f"- {t_type}: {count}")
-                            
-                        # Qualifier counts
-                        qualifier_count = df['Is Qualifier'].sum()
-                        st.write(f"Qualifying Events: {qualifier_count}")
-                        
-                        # Tournament by month (if dates are available)
-                        if 'Date' in df.columns and df['Date'].notna().any():
-                            try:
-                                # Convert date strings to datetime
-                                date_df = df[df['Date'].notna()].copy()
-                                date_df['Month'] = pd.to_datetime(date_df['Date']).dt.month_name()
-                                
-                                # Count tournaments by month
-                                month_counts = date_df['Month'].value_counts()
-                                
-                                if not month_counts.empty:
-                                    st.write("Tournaments by Month:")
-                                    for month, count in month_counts.items():
-                                        st.write(f"- {month}: {count}")
-                            except Exception as e:
-                                # Skip month analysis if there's an error
-                                pass
-                except Exception as e:
-                    st.error(f"An error occurred during scraping: {str(e)}")
-        else:
-            st.error("Please enter a valid URL")
+    # Test button
+    if st.button("Test Connection"):
+        try:
+            with st.spinner("Testing connection..."):
+                # Test requests
+                response = requests.get("https://www.google.com", timeout=5)
+                response.raise_for_status()
+                st.success("✅ Requests is working correctly!")
+                
+                # Test BeautifulSoup
+                soup = BeautifulSoup("<html><body><h1>Test</h1></body></html>", "html.parser")
+                st.success("✅ BeautifulSoup is working correctly!")
+                
+                # All tests passed
+                st.success("All tests passed! The core functionality is working.")
+                
+                # Show environment info
+                st.subheader("Environment Information")
+                import sys
+                st.write(f"Python version: {sys.version}")
+                st.write(f"BeautifulSoup version: {BeautifulSoup.__version__}")
+                st.write(f"Requests version: {requests.__version__}")
+                st.write(f"Streamlit version: {st.__version__}")
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
     
-    # Add helpful instructions
-    with st.expander("Tips for Better Results"):
-        st.markdown("""
-        - For best results, use URLs that point directly to tournament listing pages
-        - The scraper works best with standard HTML tables or list structures
-        - Some websites may require additional customization to work properly
-        """)
+    # Add a section to demonstrate the full scraper functionality
+    st.markdown("---")
+    st.subheader("Try the Full Scraper")
+    
+    # Checkbox to enable the full scraper
+    enable_scraper = st.checkbox("Enable full scraper functionality")
+    
+    if enable_scraper:
+        # Input for URL
+        scrape_url = st.text_input(
+            "Enter Tournament Page URL",
+            value="https://www.fsga.org/TournamentResults"
+        )
         
+        # Button to start scraping
+        if st.button("Scrape Tournaments"):
+            if scrape_url:
+                with st.spinner('Scraping data...'):
+                    try:
+                        # Perform scraping
+                        tournaments = scrape_tournaments(scrape_url)
+                        
+                        if not tournaments:
+                            st.error("No tournament data found. The website structure might not be supported.")
+                        else:
+                            # Display results
+                            st.success(f"Found {len(tournaments)} tournaments")
+                            
+                            # Add filter options
+                            st.subheader("Filter Results")
+                            tournament_types = ["All"] + list(set(t['Tournament Type'] for t in tournaments if t.get('Tournament Type')))
+                            selected_type = st.selectbox("Tournament Type", tournament_types)
+                            
+                            show_qualifiers = st.checkbox("Show Only Qualifiers", value=False)
+                            
+                            # Apply filters
+                            filtered_tournaments = tournaments.copy()
+                            if selected_type != "All":
+                                filtered_tournaments = [t for t in filtered_tournaments if t.get('Tournament Type') == selected_type]
+                            
+                            if show_qualifiers:
+                                filtered_tournaments = [t for t in filtered_tournaments if t.get('Is Qualifier')]
+                            
+                            # Show filtered data
+                            st.subheader("Tournament Data")
+                            # Create a simpler display format
+                            display_data = []
+                            for t in filtered_tournaments:
+                                display_data.append({
+                                    'Name': t.get('Tournament Name', ''),
+                                    'Date': t.get('Date', 'N/A'),
+                                    'Location': t.get('Location', 'N/A'),
+                                    'Type': t.get('Tournament Type', ''),
+                                    'Qualifier': 'Yes' if t.get('Is Qualifier') else 'No'
+                                })
+                                
+                            # Show the data
+                            st.write(display_data)
+                            
+                            # Provide download link
+                            st.markdown(get_table_download_link(filtered_tournaments), unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"An error occurred during scraping: {str(e)}")
+            else:
+                st.error("Please enter a valid URL")
+    
     # Add footer
     st.markdown("---")
     st.markdown("Golf Tournament Scraper | Created for golf operations founders")
