@@ -53,7 +53,7 @@ def determine_tournament_type(name, description=""):
     combined = name_lower + " " + desc_lower
     
     if any(qualifier in combined for qualifier in ['qualifier', 'qualifying', 'q-school', 'q school']):
-        return "Qualifier"
+        return "Qualifying Round"
     elif any(one_day in combined for one_day in ['one-day', 'one day', '1-day', '1 day', 'single day']):
         return "One-Day"
     elif any(amateur in combined for amateur in ['amateur', 'am-am', 'amam']):
@@ -389,1527 +389,1334 @@ def load_from_cache(key, max_age_hours=24):
     except (json.JSONDecodeError, IOError):
         return None
 
-# Function to scrape detail page
-def scrape_detail_page(url, base_url, progress_bar=None):
-    """Scrape additional tournament details from the detail page"""
-    # Check cache first
-    cache_key = hashlib.md5(url.encode()).hexdigest()
-    cached_data = load_from_cache(cache_key)
-    if cached_data:
-        # Update progress bar if provided
-        if progress_bar:
-            progress_bar.progress(1.0)
-        return cached_data
+# Function to determine if a tournament is a qualifier based on name
+def is_qualifier_tournament(name):
+    """Determine if a tournament is a qualifier based on name"""
+    if not name:
+        return False
     
-    # Ensure URL is absolute
-    if not url.startswith(('http://', 'https://')):
-        url = urljoin(base_url, url)
-    
-    # Get HTML content
-    html = get_page_html(url)
-    if not html:
-        return {}
-    
-    # Parse HTML
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    # Initialize details dictionary
-    details = {
-        'Description': None,
-        'Golf Course Name': None,
-        'Location': None,
-        'Entry Fee': None,
-        'Prize Money': None,
-        'Registration Deadline': None,
-        'Contact Info': None,
-        'Qualifiers': []
-    }
-    
-    # Extract description (look for common description elements)
-    description_elements = [
-        soup.find('div', class_=lambda c: c and 'description' in c.lower()),
-        soup.find('p', class_=lambda c: c and 'desc' in c.lower()),
-        soup.find('div', id=lambda i: i and 'description' in i.lower()),
-        soup.find('section', class_=lambda c: c and 'info' in c.lower())
+    name_lower = name.lower()
+    qualifier_keywords = [
+        'qualifier', 'qualifying', 'qualification', 'q-school', 'q school',
+        'local qualifying', 'sectional qualifying', 'regional qualifying'
     ]
     
-    for element in description_elements:
-        if element and element.text.strip():
-            details['Description'] = element.text.strip()
-            break
-    
-    # Extract golf course name (look for venue information)
-    course_elements = [
-        soup.find('div', class_=lambda c: c and 'venue' in c.lower()),
-        soup.find('h2', class_=lambda c: c and 'course' in c.lower() if c else False),
-        soup.find('span', class_=lambda c: c and 'location' in c.lower() if c else False),
-        soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and re.search(r'golf\s+(?:club|course)', tag.text.lower(), re.I) if tag.text else False)
-    ]
-    
-    for element in course_elements:
-        if element and element.text.strip():
-            details['Golf Course Name'] = element.text.strip()
-            break
-    
-    # If no specific course element found, try to extract from text
-    if not details['Golf Course Name']:
-        course_pattern = r'(?:at|venue|location):\s*([\w\s]+(?:Golf Club|Country Club|Golf Course))'
-        match = re.search(course_pattern, soup.text, re.I)
-        if match:
-            details['Golf Course Name'] = match.group(1).strip()
-    
-    # Extract location (City, State)
-    location_elements = [
-        soup.find('div', class_=lambda c: c and 'location' in c.lower()),
-        soup.find('span', class_=lambda c: c and 'location' in c.lower()),
-        soup.find('address')
-    ]
-    
-    for element in location_elements:
-        if element and element.text.strip():
-            details['Location'] = extract_location(element.text)
-            break
-    
-    # If no specific location element found, try to extract from text
-    if not details['Location']:
-        location_pattern = r'(?:in|at)\s+([A-Za-z\s\.]+),\s*([A-Z]{2})'
-        match = re.search(location_pattern, soup.text)
-        if match:
-            city, state = match.groups()
-            details['Location'] = f"{city.strip()}, {state.strip()}"
-    
-    # Extract entry fee
-    fee_patterns = [
-        r'(?:entry|registration) fee:?\s*\$?(\d+(?:\.\d+)?)',
-        r'fee:?\s*\$?(\d+(?:\.\d+)?)',
-        r'cost:?\s*\$?(\d+(?:\.\d+)?)',
-        r'\$(\d+(?:\.\d+)?)(?:\s*per\s*(?:player|person|entry))',
-    ]
-    
-    for pattern in fee_patterns:
-        match = re.search(pattern, soup.text, re.I)
-        if match:
-            details['Entry Fee'] = f"${match.group(1)}"
-            break
-    
-    # Extract prize money/purse
-    prize_patterns = [
-        r'(?:prize|purse)(?:\s*money)?:?\s*\$?(\d+(?:,\d+)*(?:\.\d+)?)',
-        r'total\s*(?:prize|purse):?\s*\$?(\d+(?:,\d+)*(?:\.\d+)?)',
-    ]
-    
-    for pattern in prize_patterns:
-        match = re.search(pattern, soup.text, re.I)
-        if match:
-            prize = match.group(1)
-            # Remove commas
-            prize = prize.replace(',', '')
-            # Check if it's a reasonable amount (> $100)
-            if float(prize) > 100:
-                details['Prize Money'] = f"${prize}"
-                break
-    
-    # Extract registration deadline
-    deadline_patterns = [
-        r'(?:registration|entry)\s*deadline:?\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})',
-        r'(?:register|sign up) by:?\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})',
-        r'deadline:?\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})',
-        r'closes on:?\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})',
-    ]
-    
-    for pattern in deadline_patterns:
-        match = re.search(pattern, soup.text, re.I)
-        if match:
-            deadline = match.group(1)
-            details['Registration Deadline'] = parse_date(deadline)
-            break
-    
-    # Extract contact information
-    contact_patterns = [
-        r'(?:contact|questions|information):\s*([^\.]+(?:@|phone|tel|email)[^\.]+)',
-        r'(?:contact|questions|information)(?:[^\.]+)?(?:contact|email):\s*([^\.]+)',
-        r'(?:email|tel|phone):\s*([^\.]+)',
-    ]
-    
-    for pattern in contact_patterns:
-        match = re.search(pattern, soup.text, re.I)
-        if match:
-            details['Contact Info'] = match.group(1).strip()
-            break
-    
-    # Look for qualifying rounds information (specific section or table)
-    qualifier_section = None
-    qualifier_sections = [
-        soup.find('div', id=lambda i: i and 'qualifier' in i.lower() if i else False),
-        soup.find('section', class_=lambda c: c and 'qualifier' in c.lower() if c else False),
-        soup.find('h2', string=lambda s: s and 'qualif' in s.lower() if s else False),
-        soup.find('h3', string=lambda s: s and 'qualif' in s.lower() if s else False),
-        soup.find('h4', string=lambda s: s and 'qualif' in s.lower() if s else False)
-    ]
-    
-    for section in qualifier_sections:
-        if section:
-            qualifier_section = section
-            break
-    
-    # If found a qualifier section header, look at the following elements
-    if qualifier_section:
-        # Look at next siblings until we find something that looks like qualifier info
-        qualifiers = []
-        current = qualifier_section.find_next(['p', 'div', 'table', 'ul', 'ol'])
-        
-        while current and not current.find_parent('header'):
-            qualifier_text = current.get_text()
-            
-            # Extract date from qualifier info
-            date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,? \d{4}|\d{1,2}/\d{1,2}/\d{4}', qualifier_text)
-            
-            # Extract location from qualifier info
-            location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', qualifier_text)
-            
-            # Extract course from qualifier info
-            course_match = re.search(r'at\s+([\w\s]+(?:Golf Club|Country Club|Golf Course))', qualifier_text, re.I)
-            
-            if date_match or location_match or course_match:
-                qualifier = {
-                    'Date': date_match.group(0) if date_match else None,
-                    'Location': f"{location_match.group(1).strip()}, {location_match.group(2).strip()}" if location_match else None,
-                    'Golf Course Name': course_match.group(1).strip() if course_match else None
-                }
-                
-                # Parse the date if found
-                if qualifier['Date']:
-                    qualifier['Date'] = parse_date(qualifier['Date'])
-                
-                qualifiers.append(qualifier)
-            
-            current = current.find_next(['p', 'div', 'table', 'ul', 'ol'])
-            # Break if we've moved too far away
-            if current and current.name in ['h1', 'h2', 'h3', 'footer']:
-                break
-        
-        details['Qualifiers'] = qualifiers
-    
-    # If we haven't found any qualifiers by section, look for qualifying keywords
-    if not details['Qualifiers']:
-        qualifier_phrases = soup.find_all(string=lambda text: text and re.search(r'qualif(?:y|ier|ying|ication)', text.lower()) if text else False)
-        
-        for phrase in qualifier_phrases:
-            # Look at surrounding content
-            surrounding = phrase.parent
-            
-            # Get the surrounding text
-            surrounding_text = surrounding.get_text()
-            
-            # Extract date
-            date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,? \d{4}|\d{1,2}/\d{1,2}/\d{4}', surrounding_text)
-            
-            # Extract location
-            location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', surrounding_text)
-            
-            # Extract course
-            course_match = re.search(r'at\s+([\w\s]+(?:Golf Club|Country Club|Golf Course))', surrounding_text, re.I)
-            
-            if date_match or location_match or course_match:
-                qualifier = {
-                    'Date': date_match.group(0) if date_match else None,
-                    'Location': f"{location_match.group(1).strip()}, {location_match.group(2).strip()}" if location_match else None,
-                    'Golf Course Name': course_match.group(1).strip() if course_match else None
-                }
-                
-                # Parse the date if found
-                if qualifier['Date']:
-                    qualifier['Date'] = parse_date(qualifier['Date'])
-                
-                # Check if this qualifier is different from existing ones
-                is_new = True
-                for existing in details['Qualifiers']:
-                    if existing.get('Date') == qualifier.get('Date') and existing.get('Location') == qualifier.get('Location'):
-                        is_new = False
-                        break
-                
-                if is_new:
-                    details['Qualifiers'].append(qualifier)
-    
-    # Save to cache
-    save_to_cache(cache_key, details)
-    
-    # Update progress bar if provided
-    if progress_bar:
-        progress_bar.progress(1.0)
-    
-    return details
+    return any(keyword in name_lower for keyword in qualifier_keywords)
 
-# Function to scrape tournament data concurrently
-def scrape_tournament_details_concurrently(tournaments, base_url, max_workers=5, max_details=None):
-    """Scrape detail pages concurrently using ThreadPoolExecutor"""
-    # Filter tournaments with detail URLs
-    tournaments_with_details = [t for t in tournaments if t.get('Detail URL')]
+# Key function to extract qualifier information
+def extract_qualifier_info(html, url, parent_tournament=None):
+    """
+    Extract qualifying round information from tournament pages
     
-    # Limit by max_details if specified
-    if max_details and max_details < len(tournaments_with_details):
-        tournaments_with_details = tournaments_with_details[:max_details]
+    Args:
+        html: HTML content of the page
+        url: URL of the page
+        parent_tournament: Parent tournament data if available
+        
+    Returns:
+        List of qualifiers with all available details
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    qualifiers = []
     
-    # Create progress container
-    progress_text = st.empty()
-    progress_bar = st.progress(0.0)
+    # 1. Look for qualifying sections/headers
+    qualifier_headers = soup.find_all(
+        ['h1', 'h2', 'h3', 'h4', 'div', 'section'], 
+        string=lambda s: s and re.search(r'qualif|qualify|qualifying|qualifiers', s, re.I) if s else False
+    )
     
-    # Define function to process a single tournament
-    def process_tournament(index, tournament):
-        progress_text.text(f"Scraping details for {tournament['Tournament Name']} ({index+1}/{len(tournaments_with_details)})")
-        detail_data = scrape_detail_page(tournament['Detail URL'], base_url)
-        return tournament, detail_data
+    for header in qualifier_headers:
+        # Look at section content
+        qualifier_section = header.find_next(['div', 'ul', 'table', 'section', 'p']) or header.parent
+        
+        if qualifier_section:
+            # Try to find qualifier items (list items, table rows, etc.)
+            qualifier_items = qualifier_section.find_all(['li', 'tr', 'div'], class_=lambda c: c and ('item' in c.lower() or 'qualifier' in c.lower()) if c else False)
+            
+            # If specific items not found, try to extract from the entire section
+            if not qualifier_items:
+                qualifier_items = [qualifier_section]
+            
+            # Process each qualifier item/section
+            for item in qualifier_items:
+                item_text = item.get_text()
+                
+                # Extract date
+                date_text = None
+                date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', item_text)
+                if date_match:
+                    date_text = date_match.group(0)
+                
+                # Extract location
+                location_text = None
+                location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', item_text)
+                if location_match:
+                    city, state = location_match.groups()
+                    location_text = f"{city.strip()}, {state.strip()}"
+                
+                # Extract golf course
+                course_text = None
+                course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Course|G\.?C\.?))', item_text, re.I)
+                if course_match:
+                    course_text = course_match.group(1).strip()
+                elif location_text:
+                    # Try to extract course from link text or other elements
+                    course_elements = item.find_all('a')
+                    for element in course_elements:
+                        element_text = element.get_text().strip()
+                        if any(keyword in element_text.lower() for keyword in ['golf', 'country', 'club', 'course', 'links']):
+                            course_text = element_text
+                            break
+                
+                # If we found meaningful data, create a qualifier entry
+                if date_text or location_text or course_text:
+                    qualifier_data = {
+                        'Tournament Name': f"{parent_tournament['Tournament Name']} Qualifier" if parent_tournament else "Qualifying Round",
+                        'Date': parse_date(date_text) if date_text else None,
+                        'Golf Course Name': course_text,
+                        'Location': location_text,
+                        'Tournament Type': 'Qualifying Round',
+                        'Is Qualifier': True,
+                        'Detail URL': url
+                    }
+                    
+                    # Add parent tournament info if available
+                    if parent_tournament:
+                        qualifier_data['Parent Tournament'] = parent_tournament['Tournament Name']
+                        qualifier_data['Parent Tournament ID'] = parent_tournament.get('Tournament ID')
+                    
+                    qualifiers.append(qualifier_data)
     
-    # Use ThreadPoolExecutor to process tournaments concurrently
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_index = {
-            executor.submit(process_tournament, i, t): i 
-            for i, t in enumerate(tournaments_with_details)
+    # 2. Look for qualifying links
+    qualifier_links = soup.find_all('a', 
+        href=lambda href: href and re.search(r'qualif|qualifying|qualifier', href, re.I),
+        string=lambda s: s and len(s) > 5
+    )
+    
+    # Also look for links that contain text about qualifying
+    qualifier_text_links = soup.find_all('a', 
+        string=lambda s: s and re.search(r'qualif|qualifying|qualifier', s, re.I) if s else False
+    )
+    
+    # Combine the link lists and remove duplicates
+    all_qualifier_links = list(set(qualifier_links + qualifier_text_links))
+    
+    # Process each qualifier link
+    for link in all_qualifier_links:
+        link_text = link.get_text().strip()
+        link_url = link.get('href', '')
+        
+        # Make absolute URL if needed
+        if link_url and not link_url.startswith(('http://', 'https://')):
+            link_url = urljoin(url, link_url)
+        
+        # Extract date from link text
+        date_text = None
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', link_text)
+        if date_match:
+            date_text = date_match.group(0)
+        
+        # Extract location from link text
+        location_text = None
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', link_text)
+        if location_match:
+            city, state = location_match.groups()
+            location_text = f"{city.strip()}, {state.strip()}"
+        
+        # Extract golf course from link text
+        course_text = None
+        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Course|G\.?C\.?))', link_text, re.I)
+        if course_match:
+            course_text = course_match.group(1).strip()
+        
+        # Create qualifier entry
+        qualifier_data = {
+            'Tournament Name': f"{parent_tournament['Tournament Name']} Qualifier" if parent_tournament else "Qualifying Round",
+            'Date': parse_date(date_text) if date_text else None,
+            'Golf Course Name': course_text,
+            'Location': location_text,
+            'Tournament Type': 'Qualifying Round',
+            'Is Qualifier': True,
+            'Detail URL': link_url if link_url else url
         }
         
-        # Process results as they complete
-        for future in as_completed(future_to_index):
-            i = future_to_index[future]
-            progress = (i + 1) / len(tournaments_with_details)
-            progress_bar.progress(progress)
+        # Add parent tournament info if available
+        if parent_tournament:
+            qualifier_data['Parent Tournament'] = parent_tournament['Tournament Name']
+            qualifier_data['Parent Tournament ID'] = parent_tournament.get('Tournament ID')
+        
+        # Only add if we have meaningful data
+        if link_url or date_text or location_text or course_text:
+            qualifiers.append(qualifier_data)
     
-    # Get results
-    results = []
-    for future in future_to_index:
-        try:
-            tournament, detail_data = future.result()
-            
-            # Update tournament data with detail information
-            for key, value in detail_data.items():
-                if key != 'Qualifiers' and value:
-                    tournament[key] = value
-            
-            # Process qualifiers if found
-            if 'Qualifiers' in detail_data and detail_data['Qualifiers']:
-                for qualifier in detail_data['Qualifiers']:
-                    if all(value is None for value in qualifier.values()):
-                        continue  # Skip empty qualifiers
-                        
-                    qualifier_data = {
-                        'Tournament Name': f"{tournament['Tournament Name']} - Qualifier",
-                        'Date': qualifier.get('Date', tournament.get('Date')),
-                        'Golf Course Name': qualifier.get('Golf Course Name', tournament.get('Golf Course Name')),
-                        'Location': qualifier.get('Location', tournament.get('Location')),
-                        'Tournament Type': 'Qualifier',
-                        'Is Qualifier': True,
-                        'Detail URL': tournament.get('Detail URL'),  # Use main tournament detail link
-                        'Parent Tournament': tournament['Tournament Name'],
-                        'Parent Tournament ID': generate_tournament_id(tournament)
-                    }
-                    results.append(qualifier_data)
-            
-            results.append(tournament)
-        except Exception as e:
-            logger.error(f"Error processing tournament: {str(e)}")
+    # 3. Special case: If this page IS a qualifying round page
+    if (re.search(r'qualif|qualifying|qualifier', url, re.I) or 
+        (soup.title and soup.title.string and re.search(r'qualif|qualifying|qualifier', soup.title.string, re.I))):
+        
+        # Extract main tournament data as a qualifier
+        main_data = {
+            'Tournament Name': None,
+            'Date': None,
+            'Golf Course Name': None,
+            'Location': None,
+            'Tournament Type': 'Qualifying Round',
+            'Is Qualifier': True,
+            'Detail URL': url
+        }
+        
+        # Try to extract name
+        title_element = soup.find('title') or soup.find('h1')
+        if title_element:
+            main_data['Tournament Name'] = title_element.get_text().strip()
+        
+        # Extract date
+        date_element = soup.find(['span', 'div', 'p'], class_=lambda c: c and 'date' in c.lower() if c else False)
+        if date_element:
+            date_text = date_element.get_text().strip()
+            main_data['Date'] = parse_date(date_text)
+        else:
+            # Try to find date pattern in the page
+            date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', soup.get_text())
+            if date_match:
+                main_data['Date'] = parse_date(date_match.group(0))
+        
+        # Extract location
+        location_element = soup.find(['span', 'div', 'p'], class_=lambda c: c and 'location' in c.lower() if c else False)
+        if location_element:
+            location_text = location_element.get_text().strip()
+            main_data['Location'] = extract_location(location_text)
+        else:
+            # Try to find location pattern in the page
+            location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', soup.get_text())
+            if location_match:
+                city, state = location_match.groups()
+                main_data['Location'] = f"{city.strip()}, {state.strip()}"
+        
+        # Extract golf course
+        course_element = soup.find(['span', 'div', 'p'], class_=lambda c: c and ('course' in c.lower() or 'venue' in c.lower()) if c else False)
+        if course_element:
+            course_text = course_element.get_text().strip()
+            main_data['Golf Course Name'] = course_text
+        else:
+            # Try to find course pattern in the page
+            course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Course|G\.?C\.?))', soup.get_text(), re.I)
+            if course_match:
+                main_data['Golf Course Name'] = course_match.group(1).strip()
+        
+        # Add parent tournament info if available
+        if parent_tournament:
+            main_data['Parent Tournament'] = parent_tournament['Tournament Name']
+            main_data['Parent Tournament ID'] = parent_tournament.get('Tournament ID')
+        
+        # Only add if we have a name
+        if main_data['Tournament Name'] and len(main_data['Tournament Name']) > 5:
+            qualifiers.append(main_data)
     
-    # Reset progress
-    progress_bar.empty()
-    progress_text.empty()
-    
-    return results
+    return qualifiers
 
-# Main function to scrape tournaments
-def scrape_tournaments(url, max_details=None, show_progress=True, use_threading=True, max_workers=5):
-    """Main function to scrape tournament data from a URL with optional detail page scraping"""
+# Function to extract eligibility information
+def extract_eligibility_info(html):
+    """Extract eligibility requirements from tournament pages"""
+    soup = BeautifulSoup(html, 'html.parser')
+    eligibility_info = None
+    
+    # Look for eligibility sections
+    eligibility_headers = soup.find_all(
+        ['h1', 'h2', 'h3', 'h4', 'div', 'section'], 
+        string=lambda s: s and re.search(r'eligib|who can play|entry requirements', s, re.I) if s else False
+# FSGA site-specific parser for tournament items
+def parse_fsga_tournament_item(element, base_url):
+    """Parse an FSGA tournament list item"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': None,
+        'Eligibility': None
+    }
+    
+    # Try to find the tournament name
+    name_element = None
+    name_selectors = [
+        'a.event-title', 'a.tournament-title', 'a.tournament-name', 
+        'span.event-title', 'span.tournament-title', 'div.event-title',
+        'h3', 'h4', 'a'
+    ]
+    
+    for selector in name_selectors:
+        name_element = element.select_one(selector)
+        if name_element:
+            break
+    
+    # If still no name element, try to get text directly
+    if not name_element:
+        # If element is an 'a' tag, use it directly
+        if element.name == 'a':
+            name_element = element
+        else:
+            # Otherwise, check if there's text content
+            text = element.get_text().strip()
+            if text and len(text) > 5:
+                tournament_data['Tournament Name'] = text
+    
+    # Extract name if element found
+    if name_element and not tournament_data['Tournament Name']:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
+    
+    # Skip if no name found or too short
+    if not tournament_data['Tournament Name'] or len(tournament_data['Tournament Name']) < 5:
+        return None
+    
+    # Extract detail URL
+    link_element = element.find('a', href=lambda href: href and ('/Tournament/Details/' in href or '/Tournament/Index/' in href))
+    if link_element and 'href' in link_element.attrs:
+        url = link_element['href']
+        # Make absolute URL
+        if not url.startswith(('http://', 'https://')):
+            url = urljoin(base_url, url)
+        tournament_data['Detail URL'] = url
+    elif name_element and name_element.name == 'a' and 'href' in name_element.attrs:
+        url = name_element['href']
+        # Make absolute URL
+        if not url.startswith(('http://', 'https://')):
+            url = urljoin(base_url, url)
+        tournament_data['Detail URL'] = url
+    
+    # Extract date using various selectors
+    date_element = None
+    date_selectors = [
+        'span.date', 'div.date', 'span.tournament-date', 'div.tournament-date',
+        'span.event-date', 'div.event-date', 'td:nth-child(2)'
+    ]
+    
+    for selector in date_selectors:
+        date_element = element.select_one(selector)
+        if date_element:
+            break
+    
+    # If date element found, parse the date
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
+        
+        # Parse date range
+        date_range = parse_date_range(date_text)
+        if date_range.get('days'):
+            tournament_data['Start Date'] = date_range.get('start_date')
+            tournament_data['End Date'] = date_range.get('end_date')
+            tournament_data['Days'] = date_range.get('days')
+    else:
+        # Try to find date pattern in the element text
+        element_text = element.get_text()
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', element_text)
+        if date_match:
+            tournament_data['Date'] = parse_date(date_match.group(0))
+    
+    # Extract location using various selectors
+    location_element = None
+    location_selectors = [
+        'span.location', 'div.location', 'span.tournament-location', 
+        'div.tournament-location', 'span.event-location', 'div.event-location',
+        'td:nth-child(3)'
+    ]
+    
+    for selector in location_selectors:
+        location_element = element.select_one(selector)
+        if location_element:
+            break
+    
+    # If location element found, extract location
+    if location_element:
+        location_text = location_element.get_text().strip()
+        tournament_data['Location'] = extract_location(location_text)
+        
+        # Try to extract golf course name from location
+        course = extract_golf_course(location_text)
+        if course:
+            tournament_data['Golf Course Name'] = course
+    else:
+        # Try to find location pattern in the element text
+        element_text = element.get_text()
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', element_text)
+        if location_match:
+            city, state = location_match.groups()
+            tournament_data['Location'] = f"{city.strip()}, {state.strip()}"
+    
+    # Determine tournament type and qualifier status
+    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+    
+    if tournament_data['Is Qualifier']:
+        tournament_data['Tournament Type'] = 'Qualifying Round'
+    else:
+        tournament_data['Tournament Type'] = determine_tournament_type(tournament_data['Tournament Name'])
+    
+    # Generate unique ID
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    
+    return tournament_data
+
+# FSGA site-specific parser for tournament detail
+def parse_fsga_tournament_detail(soup, url):
+    """Parse FSGA tournament detail page"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': url,
+        'Eligibility': None,
+        'Description': None
+    }
+    
+    # Extract tournament name
+    name_element = soup.select_one('h1.tournament-title, h2.tournament-title, h1, h2')
+    if name_element:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
+    else:
+        # Try to extract from title
+        title_element = soup.select_one('title')
+        if title_element:
+            title_text = title_element.get_text().strip()
+            # Remove any website name suffix
+            title_parts = title_text.split(' - ')
+            if title_parts:
+                tournament_data['Tournament Name'] = title_parts[0].strip()
+    
+    # Skip if no name found
+    if not tournament_data['Tournament Name']:
+        return None
+    
+    # Extract date
+    date_element = soup.select_one('.tournament-date, .event-date, .date-display')
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
+        
+        # Parse date range
+        date_range = parse_date_range(date_text)
+        if date_range.get('days'):
+            tournament_data['Start Date'] = date_range.get('start_date')
+            tournament_data['End Date'] = date_range.get('end_date')
+            tournament_data['Days'] = date_range.get('days')
+    else:
+        # Try to find date pattern in the page
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', soup.get_text())
+        if date_match:
+            tournament_data['Date'] = parse_date(date_match.group(0))
+    
+    # Extract location and golf course
+    location_element = soup.select_one('.tournament-location, .event-location, .location-display')
+    if location_element:
+        location_text = location_element.get_text().strip()
+        tournament_data['Location'] = extract_location(location_text)
+        
+        # Try to extract golf course name
+        course = extract_golf_course(location_text)
+        if course:
+            tournament_data['Golf Course Name'] = course
+    else:
+        # Try alternative elements
+        venue_element = soup.select_one('.venue, .course, .golf-course')
+        if venue_element:
+            venue_text = venue_element.get_text().strip()
+            tournament_data['Golf Course Name'] = venue_text
+            
+            # Try to extract location from venue
+            location = extract_location(venue_text)
+            if location:
+                tournament_data['Location'] = location
+    
+    # If still no golf course, try to find it elsewhere in the page
+    if not tournament_data['Golf Course Name']:
+        course_pattern = r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club))'
+        match = re.search(course_pattern, soup.get_text(), re.I)
+        if match:
+            tournament_data['Golf Course Name'] = match.group(1).strip()
+    
+    # Extract description
+    description_element = soup.select_one('.tournament-description, .event-description, .description, .details')
+    if description_element:
+        description_text = description_element.get_text().strip()
+        if description_text:
+            tournament_data['Description'] = description_text
+    else:
+        # Try to extract description from format information
+        format_element = soup.select_one('#Format, .format, #format')
+        if format_element:
+            format_text = format_element.get_text().strip()
+            if format_text:
+                tournament_data['Description'] = format_text
+    
+    # Extract eligibility
+    eligibility_element = soup.select_one('#Eligibility, .eligibility, #eligibility')
+    if eligibility_element:
+        eligibility_text = eligibility_element.get_text().strip()
+        if eligibility_text:
+            tournament_data['Eligibility'] = eligibility_text
+    else:
+        # Try to find eligibility information in the text
+        eligibility_info = extract_eligibility_info(soup.prettify())
+        if eligibility_info:
+            tournament_data['Eligibility'] = eligibility_info
+    
+    # Determine tournament type and qualifier status
+    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+    
+    if tournament_data['Is Qualifier']:
+        tournament_data['Tournament Type'] = 'Qualifying Round'
+    else:
+        tournament_data['Tournament Type'] = determine_tournament_type(
+            tournament_data['Tournament Name'], 
+            tournament_data.get('Description', '')
+        )
+    
+    # Generate unique ID
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    
+    return tournament_data
+
+# Function to extract qualifying information from FSGA tournament
+def parse_fsga_qual    # Look for eligibility sections
+    eligibility_headers = soup.find_all(
+        ['h1', 'h2', 'h3', 'h4', 'div', 'section'], 
+        string=lambda s: s and re.search(r'eligib|who can play|entry requirements', s, re.I) if s else False
+    )
+    
+    for header in eligibility_headers:
+        # Look at section content
+        eligibility_section = header.find_next(['div', 'ul', 'ol', 'p', 'section']) or header.parent
+        
+        if eligibility_section:
+            eligibility_text = eligibility_section.get_text().strip()
+            if eligibility_text and len(eligibility_text) > 10:
+                eligibility_info = eligibility_text
+                break
+    
+    # If no explicit eligibility section, look for eligibility keywords
+    if not eligibility_info:
+        eligibility_patterns = [
+            r'(?:eligib[a-z]+)[^\.\n]*[:;-][^\.\n]+',
+            r'open to[^\.\n]+',
+            r'limited to[^\.\n]+',
+            r'restricted to[^\.\n]+',
+            r'who can play[^\.\n]*[:;-][^\.\n]+'
+        ]
+        
+        for pattern in eligibility_patterns:
+            eligibility_match = re.search(pattern, soup.get_text(), re.I)
+            if eligibility_match:
+                eligibility_info = eligibility_match.group(0).strip()
+                break
+    
+    return eligibility_info
+
+# Function to handle site type detection
+def detect_site_type(url, html=None):
+    """Detect the type of golf site from URL and HTML content"""
+    # Check for common golf site patterns in URL
+    if 'fsga.org' in url.lower():
+        return 'fsga'
+    elif 'golfgenius' in url.lower():
+        return 'golfgenius'
+    elif 'bluegolf' in url.lower():
+        return 'bluegolf'
+    
+    # If HTML is provided, check content for site indicators
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Check for FSGA
+        if re.search(r'Florida State Golf Association|FSGA', soup.get_text()):
+            return 'fsga'
+        
+        # Check for GolfGenius
+        if re.search(r'GolfGenius|Golf Genius', soup.get_text()):
+            return 'golfgenius'
+        
+        # Check for BlueGolf
+        if re.search(r'BlueGolf|Blue Golf', soup.get_text()) or 'bluegolf.com' in str(soup):
+            return 'bluegolf'
+    
+    # Default to generic
+    return 'generic'
+
+# Generic parser for tournament items
+def parse_generic_tournament_item(element, base_url):
+    """Parse a generic tournament list item"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': None,
+        'Eligibility': None
+    }
+    
+    # Try to find the tournament name
+    name_element = None
+    name_selectors = [
+        'a', 'h3', 'h4', 'span.title', 'div.title', 
+        '.name', '.tournament-name', '.event-name',
+        'td:first-child'
+    ]
+    
+    for selector in name_selectors:
+        name_element = element.select_one(selector)
+        if name_element:
+            break
+    
+    # If still no name element, try to get text directly
+    if not name_element:
+        # Check if element itself is a name container
+        if element.name in ['a', 'h3', 'h4']:
+            name_element = element
+        else:
+            # Otherwise, use element text if it's reasonably short
+            text = element.get_text().strip()
+            if text and len(text) < 100:
+                tournament_data['Tournament Name'] = text
+    
+    # Extract name if element found
+    if name_element and not tournament_data['Tournament Name']:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
+    
+    # Skip if no name found or too short
+    if not tournament_data['Tournament Name'] or len(tournament_data['Tournament Name']) < 5:
+        return None
+    
+    # Extract detail URL
+    if element.name == 'a' and 'href' in element.attrs:
+        url = element['href']
+        # Make absolute URL
+        if not url.startswith(('http://', 'https://')):
+            url = urljoin(base_url, url)
+        tournament_data['Detail URL'] = url
+    else:
+        # Look for a link inside the element
+        link = element.find('a')
+        if link and 'href' in link.attrs:
+            url = link['href']
+            # Make absolute URL
+            if not url.startswith(('http://', 'https://')):
+                url = urljoin(base_url, url)
+            tournament_data['Detail URL'] = url
+    
+    # Extract date
+    date_element = None
+    date_selectors = [
+        '.date', 'span.date', 'div.date', 
+        '.tournament-date', '.event-date',
+        'td:nth-child(2)', 'td:nth-child(3)'
+    ]
+    
+    for selector in date_selectors:
+        date_element = element.select_one(selector)
+        if date_element:
+            break
+    
+    # If date element found, parse the date
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
+    else:
+        # Try to find date pattern in the element text
+        element_text = element.get_text()
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', element_text)
+        if date_match:
+            tournament_data['Date'] = parse_date(date_match.group(0))
+    
+    # Extract location
+    location_element = None
+    location_selectors = [
+        '.location', 'span.location', 'div.location',
+        '.tournament-location', '.event-location',
+        'td:nth-child(4)', 'td:nth-child(3)'
+    ]
+    
+    for selector in location_selectors:
+        location_element = element.select_one(selector)
+        if location_element:
+            break
+    
+    # If location element found, extract location
+    if location_element:
+        location_text = location_element.get_text().strip()
+        tournament_data['Location'] = extract_location(location_text)
+    else:
+        # Try to find location pattern in the element text
+        element_text = element.get_text()
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', element_text)
+        if location_match:
+            city, state = location_match.groups()
+            tournament_data['Location'] = f"{city.strip()}, {state.strip()}"
+    
+    # Extract golf course
+    course_element = None
+    course_selectors = [
+        '.course', 'span.course', 'div.course',
+        '.venue', '.golf-course',
+        'td:nth-child(5)'
+    ]
+    
+    for selector in course_selectors:
+        course_element = element.select_one(selector)
+        if course_element:
+            break
+    
+    # If course element found, extract course
+    if course_element:
+        course_text = course_element.get_text().strip()
+        tournament_data['Golf Course Name'] = course_text
+    else:
+        # Try to find course pattern in the element text
+        element_text = element.get_text()
+        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Club|Course))', element_text, re.I)
+        if course_match:
+            tournament_data['Golf Course Name'] = course_match.group(1).strip()
+    
+    # Determine tournament type and qualifier status
+    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+    
+    if tournament_data['Is Qualifier']:
+        tournament_data['Tournament Type'] = 'Qualifying Round'
+    else:
+        # Determine general tournament type
+        name_lower = tournament_data['Tournament Name'].lower()
+        
+        if 'amateur' in name_lower:
+            tournament_data['Tournament Type'] = 'Amateur'
+        elif 'junior' in name_lower or 'youth' in name_lower:
+            tournament_data['Tournament Type'] = 'Junior'
+        elif 'senior' in name_lower:
+            tournament_data['Tournament Type'] = 'Senior'
+        elif 'open' in name_lower or 'championship' in name_lower:
+            tournament_data['Tournament Type'] = 'Championship'
+        else:
+            tournament_data['Tournament Type'] = 'Tournament'
+    
+    # Generate unique ID
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    
+    return tournament_data
+
+# Generic parser for tournament detail pages
+def parse_generic_tournament_detail(soup, url):
+    """Parse a generic tournament detail page"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': url,
+        'Eligibility': None,
+        'Description': None
+    }
+    
+    # Extract tournament name
+    name_element = soup.select_one('h1, h2, .title, .tournament-title, .event-title')
+    if name_element:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
+    else:
+        # Try to extract from title
+        title_element = soup.select_one('title')
+        if title_element:
+            title_text = title_element.get_text().strip()
+            # Remove any website name suffix
+            title_parts = title_text.split(' - ')
+            if title_parts:
+                tournament_data['Tournament Name'] = title_parts[0].strip()
+    
+    # Skip if no name found
+    if not tournament_data['Tournament Name']:
+        return None
+    
+    # Extract date
+    date_element = soup.select_one('.date, .tournament-date, .event-date')
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
+    else:
+        # Try to find date pattern in the page
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', soup.get_text())
+        if date_match:
+            tournament_data['Date'] = parse_date(date_match.group(0))
+    
+    # Extract location and golf course
+    location_element = soup.select_one('.location, .tournament-location, .event-location')
+    if location_element:
+        location_text = location_element.get_text().strip()
+        tournament_data['Location'] = extract_location(location_text)
+    else:
+        # Try to find location pattern in the page
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', soup.get_text())
+        if location_match:
+            city, state = location_match.groups()
+            tournament_data['Location'] = f"{city.strip()}, {state.strip()}"
+    
+    # Extract golf course
+    course_element = soup.select_one('.course, .venue, .golf-course')
+    if course_element:
+        course_text = course_element.get_text().strip()
+        tournament_data['Golf Course Name'] = course_text
+    else:
+        # Try to find course pattern in the page
+        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Club|Course))', soup.get_text(), re.I)
+        if course_match:
+            tournament_data['Golf Course Name'] = course_match.group(1).strip()
+    
+    # Extract description
+    description_element = soup.select_one('.description, .details, .tournament-info, .event-info, .about')
+    if description_element:
+        description_text = description_element.get_text().strip()
+        if description_text:
+            tournament_data['Description'] = description_text
+    
+    # Determine tournament type and qualifier status
+    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+    
+    if tournament_data['Is Qualifier']:
+        tournament_data['Tournament Type'] = 'Qualifying Round'
+    else:
+        # Determine general tournament type
+        name_lower = tournament_data['Tournament Name'].lower()
+        
+        if 'amateur' in name_lower:
+            tournament_data['Tournament Type'] = 'Amateur'
+        elif 'junior' in name_lower or 'youth' in name_lower:
+            tournament_data['Tournament Type'] = 'Junior'
+        elif 'senior' in name_lower:
+            tournament_data['Tournament Type'] = 'Senior'
+        elif 'open' in name_lower or 'championship' in name_lower:
+            tournament_data['Tournament Type'] = 'Championship'
+        else:
+            tournament_data['Tournament Type'] = 'Tournament'
+    
+    # Generate unique ID
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    
+    return tournament_data
+
+# Parse BlueGolf tournament item
+def parse_bluegolf_tournament_item(element, base_url):
+    """Parse a BlueGolf tournament list item"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': None,
+        'Eligibility': None
+    }
+    
+    # Try to find the tournament name
+    name_element = element.find('a') or element.find(['td', 'div'], class_=lambda c: c and ('name' in c.lower() or 'title' in c.lower()) if c else False)
+    
+    if name_element:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
+    else:
+        # Try to extract from the element text
+        text = element.get_text().strip()
+        if text and len(text) < 100:
+            # Try to extract name as first line or sentence
+            name_match = re.match(r'^([^\n\.]+)', text)
+            if name_match:
+                tournament_data['Tournament Name'] = name_match.group(1).strip()
+    
+    # Skip if no name found or too short
+    if not tournament_data['Tournament Name'] or len(tournament_data['Tournament Name']) < 5:
+        return None
+    
+    # Extract detail URL
+    link = element.find('a')
+    if link and 'href' in link.attrs:
+        url = link['href']
+        # Make absolute URL
+        if not url.startswith(('http://', 'https://')):
+            url = urljoin(base_url, url)
+        tournament_data['Detail URL'] = url
+    
+    # Extract date
+    date_element = element.find(['td', 'div'], class_=lambda c: c and 'date' in c.lower() if c else False)
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
+    else:
+        # Try to find date pattern in the element text
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', element.get_text())
+        if date_match:
+            tournament_data['Date'] = parse_date(date_match.group(0))
+    
+    # Extract location and golf course
+    location_element = element.find(['td', 'div'], class_=lambda c: c and ('location' in c.lower() or 'course' in c.lower()) if c else False)
+    if location_element:
+        location_text = location_element.get_text().strip()
+        
+        # Try to extract location
+        location = extract_location(location_text)
+        if location:
+            tournament_data['Location'] = location
+        
+        # Try to extract golf course
+        course = extract_golf_course(location_text)
+        if course:
+            tournament_data['Golf Course Name'] = course
+    else:
+        # Try to find location and course patterns in the element text
+        element_text = element.get_text()
+        
+        # Location pattern
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', element_text)
+        if location_match:
+            city, state = location_match.groups()
+            tournament_data['Location'] = f"{city.strip()}, {state.strip()}"
+        
+        # Course pattern
+        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Club|Course))', element_text, re.I)
+        if course_match:
+            tournament_data['Golf Course Name'] = course_match.group(1).strip()
+    
+    # Determine tournament type and qualifier status
+    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+    
+    if tournament_data['Is Qualifier']:
+        tournament_data['Tournament Type'] = 'Qualifying Round'
+    else:
+        # Determine general tournament type
+        name_lower = tournament_data['Tournament Name'].lower()
+        
+        if 'amateur' in name_lower:
+            tournament_data['Tournament Type'] = 'Amateur'
+        elif 'junior' in name_lower or 'youth' in name_lower:
+            tournament_data['Tournament Type'] = 'Junior'
+        elif 'senior' in name_lower:
+            tournament_data['Tournament Type'] = 'Senior'
+        elif 'open' in name_lower or 'championship' in name_lower:
+            tournament_data['Tournament Type'] = 'Championship'
+        else:
+            tournament_data['Tournament Type'] = 'Tournament'
+    
+    # Generate unique ID
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    
+    return tournament_dataimport streamlit as st
+# Function to extract qualifying information from FSGA tournament
+def parse_fsga_qualifiers(soup, url, parent_tournament):
+    """Extract qualifier information from an FSGA tournament page"""
+    qualifiers = []
+    
+    # Look for qualifier sections or links
+    qualifier_headers = soup.find_all(['h3', 'h4', 'div', 'a'], string=lambda s: s and re.search(r'qualify|qualifying|qualifiers', s, re.I) if s else False)
+    
+    for header in qualifier_headers:
+        # Check if this is a link to qualifiers
+        if header.name == 'a' and 'href' in header.attrs:
+            link_url = header['href']
+            # Make absolute URL
+            if not link_url.startswith(('http://', 'https://')):
+                link_url = urljoin(url, link_url)
+            
+            # Create a qualifier entry with the information we have
+            qualifier_data = {
+                'Tournament Name': f"{parent_tournament['Tournament Name']} - Qualifier",
+                'Date': None,
+                'Golf Course Name': None,
+                'Location': None,
+                'Tournament Type': 'Qualifying Round',
+                'Is Qualifier': True,
+                'Detail URL': link_url,
+                'Parent Tournament': parent_tournament['Tournament Name'],
+                'Parent Tournament ID': parent_tournament.get('Tournament ID')
+            }
+            
+            # Try to extract date and location from link text
+            link_text = header.get_text()
+            
+            # Date
+            date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', link_text)
+            if date_match:
+                qualifier_data['Date'] = parse_date(date_match.group(0))
+            
+            # Location
+            location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', link_text)
+            if location_match:
+                city, state = location_match.groups()
+                qualifier_data['Location'] = f"{city.strip()}, {state.strip()}"
+            
+            qualifiers.append(qualifier_data)
+        else:
+            # Look at next section for qualifier details
+            qualifier_section = header.find_next(['div', 'ul', 'table', 'ol'])
+            
+            if qualifier_section:
+                # Try to find qualifier items
+                qualifier_items = qualifier_section.find_all(['li', 'tr'])
+                
+                if not qualifier_items:
+                    # If no items found, extract information from the section text
+                    section_text = qualifier_section.get_text()
+                    
+                    # Look for date patterns
+                    date_matches = re.finditer(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', section_text)
+                    
+                    for date_match in date_matches:
+                        date_text = date_match.group(0)
+                        
+                        # Get surrounding context (100 chars before and after the date)
+                        start_pos = max(0, date_match.start() - 100)
+                        end_pos = min(len(section_text), date_match.end() + 100)
+                        context = section_text[start_pos:end_pos]
+                        
+                        # Look for location in context
+                        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', context)
+                        location_text = None
+                        if location_match:
+                            city, state = location_match.groups()
+                            location_text = f"{city.strip()}, {state.strip()}"
+                        
+                        # Look for golf course in context
+                        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club))', context, re.I)
+                        course_text = None
+                        if course_match:
+                            course_text = course_match.group(1).strip()
+                        
+                        # Create qualifier entry
+                        qualifier_data = {
+                            'Tournament Name': f"{parent_tournament['Tournament Name']} - Qualifier",
+                            'Date': parse_date(date_text),
+                            'Golf Course Name': course_text,
+                            'Location': location_text,
+                            'Tournament Type': 'Qualifying Round',
+                            'Is Qualifier': True,
+                            'Detail URL': url,  # Use parent tournament URL
+                            'Parent Tournament': parent_tournament['Tournament Name'],
+                            'Parent Tournament ID': parent_tournament.get('Tournament ID')
+                        }
+                        
+                        qualifiers.append(qualifier_data)
+                else:
+                    # Process each qualifier item
+                    for item in qualifier_items:
+                        item_text = item.get_text()
+                        
+                        # Skip if this doesn't look like a qualifier item
+                        if len(item_text) < 10:
+                            continue
+                        
+                        # Extract date
+                        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', item_text)
+                        date_text = None
+                        if date_match:
+                            date_text = date_match.group(0)
+                        
+                        # Extract location
+                        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', item_text)
+                        location_text = None
+                        if location_match:
+                            city, state = location_match.groups()
+                            location_text = f"{city.strip()}, {state.strip()}"
+                        
+                        # Extract golf course
+                        course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club))', item_text, re.I)
+                        course_text = None
+                        if course_match:
+                            course_text = course_match.group(1).strip()
+                        
+                        # Look for a link
+                        link = item.find('a')
+                        link_url = None
+                        if link and 'href' in link.attrs:
+                            link_url = link['href']
+                            # Make absolute URL
+                            if not link_url.startswith(('http://', 'https://')):
+                                link_url = urljoin(url, link_url)
+                        
+                        # Create qualifier entry
+                        qualifier_data = {
+                            'Tournament Name': f"{parent_tournament['Tournament Name']} - Qualifier",
+                            'Date': parse_date(date_text) if date_text else None,
+                            'Golf Course Name': course_text,
+                            'Location': location_text,
+                            'Tournament Type': 'Qualifying Round',
+                            'Is Qualifier': True,
+                            'Detail URL': link_url if link_url else url,
+                            'Parent Tournament': parent_tournament['Tournament Name'],
+                            'Parent Tournament ID': parent_tournament.get('Tournament ID')
+                        }
+                        
+                        qualifiers.append(qualifier_data)
+    
+    # Special case: look for FSGA qualifier links
+    qualifier_links = soup.find_all('a', href=lambda href: href and ('/Tournament/Qualifier/' in href or '/Qualifier/' in href))
+    
+    for link in qualifier_links:
+        link_text = link.get_text().strip()
+        link_url = link['href']
+        
+        # Make absolute URL
+        if not link_url.startswith(('http://', 'https://')):
+            link_url = urljoin(url, link_url)
+        
+        # Create qualifier entry
+        qualifier_data = {
+            'Tournament Name': f"{parent_tournament['Tournament Name']} - Qualifier",
+            'Date': None,
+            'Golf Course Name': None,
+            'Location': None,
+            'Tournament Type': 'Qualifying Round',
+            'Is Qualifier': True,
+            'Detail URL': link_url,
+            'Parent Tournament': parent_tournament['Tournament Name'],
+            'Parent Tournament ID': parent_tournament.get('Tournament ID')
+        }
+        
+        # Try to extract date and location from link text
+        # Date
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', link_text)
+        if date_match:
+            qualifier_data['Date'] = parse_date(date_match.group(0))
+        
+        # Location
+        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', link_text)
+        if location_match:
+            city, state = location_match.groups()
+            qualifier_data['Location'] = f"{city.strip()}, {state.strip()}"
+        
+        qualifiers.append(qualifier_data)
+    
+    # Look for qualifying sites text
+    qualifier_sites = soup.find(string=lambda text: text and re.search(r'\d+\s+qualifying sites', text, re.I))
+    if qualifier_sites:
+        # If we find text about qualifier sites but no specific qualifiers,
+        # mark the parent tournament as having qualifiers
+        if not qualifiers:
+            # Try to extract the number of qualifying sites
+            sites_match = re.search(r'(\d+)\s+qualifying sites', qualifier_sites, re.I)
+            if sites_match:
+                parent_tournament['Qualifier Count'] = int(sites_match.group(1))
+                parent_tournament['Has Qualifiers'] = True
+    
+    return qualifiers
+
+# GolfGenius site-specific scraper
+def scrape_golfgenius_tournaments(url, max_details=None, show_progress=True):
+    """Specialized scraper for GolfGenius website"""
     # Check cache first
-    cache_key = f"tournaments_{hashlib.md5(url.encode()).hexdigest()}"
+    cache_key = f"golfgenius_{hashlib.md5(url.encode()).hexdigest()}"
     cached_data = load_from_cache(cache_key)
     if cached_data:
         if show_progress:
-            st.success(f"Loaded {len(cached_data)} tournaments from cache.")
+            st.success(f"Loaded {len(cached_data)} GolfGenius tournaments from cache.")
         return cached_data
     
     # Get HTML content
     html = get_page_html(url)
     if not html:
         return []
-        
+    
     # Parse HTML
     soup = BeautifulSoup(html, 'html.parser')
-    
-    # Find potential tournament elements
-    tournament_elements = []
-    
-    # Strategy 1: Look for tables
-    tables = soup.find_all('table')
-    for table in tables:
-        rows = table.find_all('tr')
-        if len(rows) > 1:  # Skip tables with only header row
-            tournament_elements.extend(rows[1:])  # Skip header row
-    
-    # Strategy 2: Look for lists if no tables
-    if len(tournament_elements) < 3:
-        lists = soup.find_all(['ul', 'ol'])
-        for list_element in lists:
-            items = list_element.find_all('li')
-            if len(items) > 2:  # Only consider lists with several items
-                tournament_elements.extend(items)
-    
-    # Strategy 3: Look for specific div patterns if still not enough
-    if len(tournament_elements) < 3:
-        # Common patterns in tournament listings
-        patterns = [
-            ['div', {'class': lambda c: c and ('tournament' in c.lower() or 'event' in c.lower())}],
-            ['div', {'class': lambda c: c and ('item' in c.lower() or 'result' in c.lower())}],
-            ['article', {}],
-            ['div', {'class': lambda c: c and ('list' in c.lower() or 'results' in c.lower())}]
-        ]
-        
-        for selector, attrs in patterns:
-            elements = soup.find_all(selector, attrs)
-            if elements:
-                tournament_elements.extend(elements)
-                if len(tournament_elements) > 10:
-                    break
-    
-    # Strategy 4: Look for event cards or blocks
-    if len(tournament_elements) < 3:
-        # Look for common event card patterns
-        card_patterns = [
-            ['div', {'class': lambda c: c and ('card' in c.lower())}],
-            ['div', {'class': lambda c: c and ('event' in c.lower())}],
-            ['div', {'class': lambda c: c and ('block' in c.lower())}],
-            ['div', {'data-type': lambda d: d and ('event' in d.lower())}]
-        ]
-        
-        for selector, attrs in card_patterns:
-            elements = soup.find_all(selector, attrs)
-            if elements:
-                tournament_elements.extend(elements)
-                if len(tournament_elements) > 10:
-                    break
-    
-    # Prepare data structure
     tournaments = []
     
     # Set up progress tracking
     if show_progress:
         progress_text = st.empty()
         progress_bar = st.progress(0.0)
-        progress_text.text("Finding tournament elements...")
+        progress_text.text("Finding GolfGenius tournament elements...")
+    
+    # Check if this is a tournament detail page or event page
+    is_detail_page = False
+    
+    # Look for common GolfGenius detail page indicators
+    detail_indicators = [
+        'Registration Information',
+        'Player Information',
+        'Starting Times',
+        'Results',
+        'Event Manager'
+    ]
+    
+    for indicator in detail_indicators:
+        if indicator in soup.get_text():
+            is_detail_page = True
+            break
+    
+    if is_detail_page:
+        # Parse as a single tournament
+        tournament = parse_golfgenius_tournament_detail(soup, url)
+        if tournament:
+            tournaments.append(tournament)
     else:
-        progress_text = None
-        progress_bar = None
-    
-    # Get total count for progress calculation
-    total_elements = len(tournament_elements)
-    
-    # Loop through tournament elements
-    for i, element in enumerate(tournament_elements):
-        # Update progress
-        if show_progress and total_elements > 0:
-            progress = i / total_elements
-            progress_bar.progress(progress)
-            progress_text.text(f"Processing tournament {i+1} of {total_elements}...")
+        # GolfGenius has many different layouts, try various selectors
+        tournament_elements = []
         
-        # Extract basic information
-        tournament_name_element = (
-            element.find('h3') or 
-            element.find('h4') or 
-            element.find('a') or 
-            element.find('td') or
-            element
-        )
+        # Try different GolfGenius selectors for tournament lists
+        selectors = [
+            '.event-row',  # Standard event rows
+            '.tournament-item',  # Tournament items
+            '.event-card',  # Event cards
+            '.event-list-item',  # Event list items
+            '.event-box',  # Event boxes
+            '.tournament-box',  # Tournament boxes
+            '.tournament-card'  # Tournament cards
+        ]
         
-        if not tournament_name_element:
-            continue
+        for selector in selectors:
+            elements = soup.select(selector)
+            if elements:
+                tournament_elements.extend(elements)
+        
+        # If still no elements found, look for links that might be tournaments
+        if not tournament_elements:
+            # Try to find a container with events
+            event_containers = soup.select('.events-container, .tournaments-container, .event-list, .tournament-list')
             
-        tournament_name = tournament_name_element.get_text().strip()
+            for container in event_containers:
+                # Look for links or divs that might be events
+                elements = container.find_all(['a', 'div'], class_=lambda c: c and ('event' in c.lower() or 'tournament' in c.lower()) if c else False)
+                if elements:
+                    tournament_elements.extend(elements)
         
-        # Skip if doesn't look like a tournament name
-        if len(tournament_name) < 5 or tournament_name.lower() in ['date', 'tournament', 'event', 'name']:
-            continue
+        # If still no elements, try more generic approach - look for any links that might be to tournament details
+        if not tournament_elements:
+            links = soup.find_all('a', href=lambda href: href and ('event' in href.lower() or 'tournament' in href.lower()))
+            tournament_elements.extend(links)
         
-        # Find detail link
-        detail_link = None
-        link_element = element.find('a')
-        if link_element and 'href' in link_element.attrs:
-            detail_link = link_element['href']
-            # Make sure URL is absolute
-            if not detail_link.startswith(('http://', 'https://')):
-                detail_link = urljoin(url, detail_link)
+        # Get total count for progress calculation
+        total_elements = len(tournament_elements)
         
-        # Extract date - look for date patterns
-        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?,? \d{4}|\d{1,2}/\d{1,2}/\d{4}', element.get_text())
-        date = None
-        if date_match:
-            date = parse_date(date_match.group(0))
-        
-        # Extract location - look for location patterns
-        location = None
-        location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2})', element.get_text())
-        if location_match:
-            location = f"{location_match.group(1).strip()}, {location_match.group(2).strip()}"
+        # Process each tournament element
+        for i, element in enumerate(tournament_elements):
+            # Update progress
+            if show_progress and total_elements > 0:
+                progress = i / total_elements
+                progress_bar.progress(progress)
+                progress_text.text(f"Processing GolfGenius tournament {i+1} of {total_elements}...")
             
-        # Extract golf course
-        course = extract_golf_course(element.get_text())
-        
-        # Parse date range if present
-        date_range = None
-        if date:
-            date_range = parse_date_range(date_match.group(0))
-        
-        # Initialize tournament data
-        tournament_data = {
-            'Tournament Name': tournament_name,
-            'Date': date,
-            'Golf Course Name': course,
-            'Location': location,
-            'Tournament Type': determine_tournament_type(tournament_name),
-            'Is Qualifier': is_qualifier(tournament_name),
-            'Detail URL': detail_link,
-            'Tournament ID': generate_tournament_id({'Tournament Name': tournament_name, 'Date': date, 'Location': location})
-        }
-        
-        # Add date range info if available
-        if date_range and date_range.get('days'):
-            tournament_data['Start Date'] = date_range.get('start_date')
-            tournament_data['End Date'] = date_range.get('end_date')
-            tournament_data['Days'] = date_range.get('days')
-        
-        # Add tournament to list
-        tournaments.append(tournament_data)
+            # Extract tournament info
+            tournament = parse_golfgenius_tournament_item(element, url)
+            if tournament:
+                tournaments.append(tournament)
+                
+                # If we have a detail URL and within the max_details limit, get additional info
+                if tournament.get('Detail URL') and (max_details is None or i < max_details):
+                    detail_html = get_page_html(tournament['Detail URL'])
+                    if detail_html:
+                        detail_soup = BeautifulSoup(detail_html, 'html.parser')
+                        
+                        # Update with details
+                        detail_info = parse_golfgenius_tournament_detail(detail_soup, tournament['Detail URL'])
+                        if detail_info:
+                            for key, value in detail_info.items():
+                                if key != 'Tournament Name' and value:  # Keep original name
+                                    tournament[key] = value
     
-    # Complete initial progress
+    # Complete progress
     if show_progress:
         progress_bar.progress(1.0)
-        progress_text.text(f"Found {len(tournaments)} tournaments")
-    
-    # Process detail pages if needed
-    if max_details and detail_links:
-        if show_progress:
-            progress_text.text("Scraping tournament details...")
-        
-        if use_threading:
-            tournaments = scrape_tournament_details_concurrently(
-                tournaments, url, max_workers=max_workers, max_details=max_details
-            )
-        else:
-            # Traditional sequential processing
-            for i, tournament in enumerate(tournaments):
-                if tournament.get('Detail URL') and (max_details is None or i < max_details):
-                    if show_progress:
-                        progress_text.text(f"Scraping details for {tournament['Tournament Name']}...")
-                        detail_progress = st.empty()
-                        detail_progress.progress(0.0)
-                    else:
-                        detail_progress = None
-                        
-                    detail_data = scrape_detail_page(tournament['Detail URL'], url, detail_progress)
-                    
-                    # Update tournament data with detail information
-                    for key, value in detail_data.items():
-                        if key != 'Qualifiers' and value:
-                            tournament[key] = value
-                    
-                    # Process qualifiers if found
-                    if 'Qualifiers' in detail_data and detail_data['Qualifiers']:
-                        for qualifier in detail_data['Qualifiers']:
-                            if all(value is None for value in qualifier.values()):
-                                continue  # Skip empty qualifiers
-                                
-                            qualifier_data = {
-                                'Tournament Name': f"{tournament['Tournament Name']} - Qualifier",
-                                'Date': qualifier.get('Date', tournament.get('Date')),
-                                'Golf Course Name': qualifier.get('Golf Course Name', tournament.get('Golf Course Name')),
-                                'Location': qualifier.get('Location', tournament.get('Location')),
-                                'Tournament Type': 'Qualifier',
-                                'Is Qualifier': True,
-                                'Detail URL': tournament.get('Detail URL'),  # Use main tournament detail link
-                                'Parent Tournament': tournament['Tournament Name'],
-                                'Parent Tournament ID': tournament.get('Tournament ID')
-                            }
-                            tournaments.append(qualifier_data)
+        progress_text.text(f"Found {len(tournaments)} GolfGenius tournaments")
     
     # Save to cache
     save_to_cache(cache_key, tournaments)
     
-    # Complete progress
-    if show_progress:
-        qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
-        progress_text.text(f"Found {len(tournaments)} tournaments (including {qualifier_count} qualifiers)")
-    
     return tournaments
 
-# Function to analyze tournament data
-def analyze_tournament_data(tournaments):
-    """Analyze tournament data for insights"""
-    if not tournaments:
-        return {}
-    
-    # Convert to DataFrame for easier analysis
-    df = pd.DataFrame(tournaments)
-    
-    # Initialize results
-    analysis = {
-        'total_count': len(df),
-        'qualifier_count': sum(df.get('Is Qualifier', False)),
-        'tournament_types': {},
-        'months': {},
-        'locations': {},
-        'courses': {},
-        'avg_tournament_length': None
+# GolfGenius site-specific parser for tournament items
+def parse_golfgenius_tournament_item(element, base_url):
+    """Parse a GolfGenius tournament list item"""
+    # Initialize data
+    tournament_data = {
+        'Tournament Name': None,
+        'Date': None,
+        'Golf Course Name': None,
+        'Location': None,
+        'Tournament Type': None,
+        'Is Qualifier': False,
+        'Has Qualifiers': None,
+        'Detail URL': None,
+        'Eligibility': None
     }
     
-    # Count by tournament type
-    if 'Tournament Type' in df.columns:
-        type_counts = df['Tournament Type'].value_counts().to_dict()
-        analysis['tournament_types'] = type_counts
+    # Try to find the tournament name
+    name_element = None
+    name_selectors = [
+        '.event-name', '.tournament-name', '.event-title', '.tournament-title',
+        'h3', 'h4', '.title'
+    ]
     
-    # Count by month if dates available
-    if 'Date' in df.columns:
-        # Convert to datetime
-        valid_dates = df[df['Date'].notna() & df['Date'].str.contains('-')]
-        if not valid_dates.empty:
-            valid_dates['Month'] = pd.to_datetime(valid_dates['Date']).dt.month
-            valid_dates['Month_Name'] = pd.to_datetime(valid_dates['Date']).dt.strftime('%B')
-            month_counts = valid_dates['Month_Name'].value_counts().to_dict()
-            
-            # Sort by month number
-            month_order = {
-                'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
-                'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
-            }
-            analysis['months'] = {k: month_counts[k] for k in sorted(month_counts.keys(), key=lambda x: month_order.get(x, 13))}
+    for selector in name_selectors:
+        name_element = element.select_one(selector)
+        if name_element:
+            break
     
-    # Count by location
-    if 'Location' in df.columns:
-        location_counts = df['Location'].value_counts().head(10).to_dict()
-        analysis['locations'] = location_counts
+    # If no name element found with selectors, try to get from link text
+    if not name_element and element.name == 'a':
+        name_element = element
     
-    # Count by course
-    if 'Golf Course Name' in df.columns:
-        course_counts = df['Golf Course Name'].value_counts().head(10).to_dict()
-        analysis['courses'] = course_counts
+    # If still no name element, try to get from text content
+    if not name_element:
+        text = element.get_text().strip()
+        if text and len(text) > 5:
+            tournament_data['Tournament Name'] = text
     
-    # Calculate average tournament length
-    if 'Days' in df.columns:
-        days = df['Days'].dropna()
-        if not days.empty:
-            analysis['avg_tournament_length'] = round(days.mean(), 1)
+    # Extract name if element found
+    if name_element and not tournament_data['Tournament Name']:
+        tournament_data['Tournament Name'] = name_element.get_text().strip()
     
-    return analysis
-
-# Function to create tournament network visualization
-def create_tournament_network(tournaments):
-    """Create network visualization of tournaments and qualifiers"""
-    # Create nodes for tournaments
-    nodes = []
-    edges = []
-    
-    # Create mapping for tournament IDs to indices
-    tournament_map = {}
-    
-    for i, tournament in enumerate(tournaments):
-        # Skip if no ID
-        if 'Tournament ID' not in tournament:
-            continue
-        
-        # Add to map
-        tournament_map[tournament['Tournament ID']] = i
-        
-        # Create node
-        node = {
-            'id': i,
-            'name': tournament['Tournament Name'],
-            'type': tournament.get('Tournament Type', 'Unknown'),
-            'qualifier': tournament.get('Is Qualifier', False)
-        }
-        
-        nodes.append(node)
-        
-        # Create edge if this is a qualifier
-        if tournament.get('Is Qualifier') and tournament.get('Parent Tournament ID'):
-            parent_id = tournament.get('Parent Tournament ID')
-            
-            # Check if parent is in map
-            if parent_id in tournament_map:
-                edge = {
-                    'source': i,
-                    'target': tournament_map[parent_id],
-                }
-                
-                edges.append(edge)
-    
-    return {'nodes': nodes, 'edges': edges}
-
-# Class for tournament site profile detection
-class TournamentSiteDetector:
-    """Class to detect and handle different tournament site profiles"""
-    
-    # Predefined profiles
-    profiles = {
-        'fsga': {
-            'name': 'Florida State Golf Association',
-            'patterns': ['fsga.org', 'florida state golf', 'fsga'],
-            'selectors': {
-                'tournaments': [
-                    {'selector': 'table.tournament-results tr', 'type': 'table_row'},
-                    {'selector': 'div.tournament-item', 'type': 'card'}
-                ],
-                'name': [
-                    {'selector': 'td:first-child a', 'attribute': 'text'},
-                    {'selector': 'h3.tournament-name', 'attribute': 'text'}
-                ],
-                'date': [
-                    {'selector': 'td:nth-child(2)', 'attribute': 'text'},
-                    {'selector': 'div.tournament-date', 'attribute': 'text'}
-                ],
-                'location': [
-                    {'selector': 'td:nth-child(3)', 'attribute': 'text'},
-                    {'selector': 'div.tournament-location', 'attribute': 'text'}
-                ]
-            }
-        },
-        'usga': {
-            'name': 'United States Golf Association',
-            'patterns': ['usga.org', 'us golf', 'usga'],
-            'selectors': {
-                'tournaments': [
-                    {'selector': 'table.championships-table tr', 'type': 'table_row'},
-                    {'selector': 'div.championship-card', 'type': 'card'}
-                ],
-                'name': [
-                    {'selector': 'td.championship-name a', 'attribute': 'text'},
-                    {'selector': 'h3.championship-title', 'attribute': 'text'}
-                ],
-                'date': [
-                    {'selector': 'td.championship-date', 'attribute': 'text'},
-                    {'selector': 'div.championship-dates', 'attribute': 'text'}
-                ],
-                'location': [
-                    {'selector': 'td.championship-location', 'attribute': 'text'},
-                    {'selector': 'div.championship-venue', 'attribute': 'text'}
-                ]
-            }
-        },
-        'pga': {
-            'name': 'Professional Golfers Association',
-            'patterns': ['pga.com', 'professional golfers', 'pga'],
-            'selectors': {
-                'tournaments': [
-                    {'selector': 'table.tournament-schedule tr', 'type': 'table_row'},
-                    {'selector': 'div.tournament-card', 'type': 'card'}
-                ],
-                'name': [
-                    {'selector': 'td.tournament-name a', 'attribute': 'text'},
-                    {'selector': 'h3.tournament-title', 'attribute': 'text'}
-                ],
-                'date': [
-                    {'selector': 'td.tournament-date', 'attribute': 'text'},
-                    {'selector': 'div.tournament-dates', 'attribute': 'text'}
-                ],
-                'location': [
-                    {'selector': 'td.tournament-location', 'attribute': 'text'},
-                    {'selector': 'div.tournament-venue', 'attribute': 'text'}
-                ]
-            }
-        }
-    }
-    
-    @classmethod
-    def detect_profile(cls, url, html=None):
-        """Detect the profile based on URL and optionally HTML content"""
-        # Check URL against known patterns
-        for profile_id, profile in cls.profiles.items():
-            for pattern in profile['patterns']:
-                if pattern in url.lower():
-                    return profile_id
-        
-        # If HTML provided, try more advanced detection
-        if html:
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Check for specific indicators in HTML
-            for profile_id, profile in cls.profiles.items():
-                for tournament_selector in profile['selectors']['tournaments']:
-                    elements = soup.select(tournament_selector['selector'])
-                    if len(elements) > 3:  # Found significant number of matches
-                        return profile_id
-        
-        # No match found
+    # Skip if no name found or too short
+    if not tournament_data['Tournament Name'] or len(tournament_data['Tournament Name']) < 5:
         return None
     
-    @classmethod
-    def get_profile(cls, profile_id):
-        """Get profile by ID"""
-        return cls.profiles.get(profile_id)
-    
-    @classmethod
-    def get_all_profiles(cls):
-        """Get all profiles"""
-        return cls.profiles
-    
-    @classmethod
-    def scrape_with_profile(cls, url, profile_id, max_details=None):
-        """Scrape using a specific profile"""
-        profile = cls.get_profile(profile_id)
-        if not profile:
-            return None
-        
-        # Get HTML
-        html = get_page_html(url)
-        if not html:
-            return None
-        
-        soup = BeautifulSoup(html, 'html.parser')
-        tournaments = []
-        
-        # Extract tournaments based on profile selectors
-        for tournament_selector in profile['selectors']['tournaments']:
-            elements = soup.select(tournament_selector['selector'])
-            
-            # Skip header row for tables
-            if tournament_selector['type'] == 'table_row' and elements:
-                elements = elements[1:]
-            
-            for element in elements:
-                tournament = {}
-                
-                # Extract name
-                for name_selector in profile['selectors']['name']:
-                    name_elem = element.select_one(name_selector['selector'])
-                    if name_elem:
-                        tournament['Tournament Name'] = name_elem.get_text().strip()
-                        break
-                
-                # Skip if no name found
-                if 'Tournament Name' not in tournament:
-                    continue
-                
-                # Extract date
-                for date_selector in profile['selectors']['date']:
-                    date_elem = element.select_one(date_selector['selector'])
-                    if date_elem:
-                        date_text = date_elem.get_text().strip()
-                        tournament['Date'] = parse_date(date_text)
-                        
-                        # Parse date range
-                        date_range = parse_date_range(date_text)
-                        if date_range.get('days'):
-                            tournament['Start Date'] = date_range.get('start_date')
-                            tournament['End Date'] = date_range.get('end_date')
-                            tournament['Days'] = date_range.get('days')
-                        
-                        break
-                
-                # Extract location
-                for location_selector in profile['selectors']['location']:
-                    location_elem = element.select_one(location_selector['selector'])
-                    if location_elem:
-                        tournament['Location'] = extract_location(location_elem.get_text().strip())
-                        break
-                
-                # Find link
-                link_elem = element.select_one('a')
-                if link_elem and 'href' in link_elem.attrs:
-                    link = link_elem['href']
-                    # Make absolute URL
-                    if not link.startswith(('http://', 'https://')):
-                        link = urljoin(url, link)
-                    tournament['Detail URL'] = link
-                
-                # Add other fields
-                tournament['Tournament Type'] = determine_tournament_type(tournament.get('Tournament Name', ''))
-                tournament['Is Qualifier'] = is_qualifier(tournament.get('Tournament Name', ''))
-                tournament['Tournament ID'] = generate_tournament_id(tournament)
-                
-                tournaments.append(tournament)
-        
-        # Process detail pages if needed
-        if max_details and tournaments:
-            processed_tournaments = []
-            
-            for i, tournament in enumerate(tournaments):
-                if tournament.get('Detail URL') and (max_details is None or i < max_details):
-                    detail_data = scrape_detail_page(tournament['Detail URL'], url)
-                    
-                    # Update tournament data with detail information
-                    for key, value in detail_data.items():
-                        if key != 'Qualifiers' and value:
-                            tournament[key] = value
-                    
-                    # Process qualifiers if found
-                    if 'Qualifiers' in detail_data and detail_data['Qualifiers']:
-                        for qualifier in detail_data['Qualifiers']:
-                            if all(value is None for value in qualifier.values()):
-                                continue  # Skip empty qualifiers
-                                
-                            qualifier_data = {
-                                'Tournament Name': f"{tournament['Tournament Name']} - Qualifier",
-                                'Date': qualifier.get('Date', tournament.get('Date')),
-                                'Golf Course Name': qualifier.get('Golf Course Name', tournament.get('Golf Course Name')),
-                                'Location': qualifier.get('Location', tournament.get('Location')),
-                                'Tournament Type': 'Qualifier',
-                                'Is Qualifier': True,
-                                'Detail URL': tournament.get('Detail URL'),
-                                'Parent Tournament': tournament['Tournament Name'],
-                                'Parent Tournament ID': tournament.get('Tournament ID')
-                            }
-                            processed_tournaments.append(qualifier_data)
-                
-                processed_tournaments.append(tournament)
-            
-            return processed_tournaments
-        
-        return tournaments
-
-# Streamlit UI
-def main():
-    st.set_page_config(page_title="Enhanced Golf Tournament Scraper", layout="wide")
-    
-    st.title("Enhanced Golf Tournament Scraper")
-    
-    st.markdown("""
-    ## Extract tournament and qualifier data from golf association websites
-    
-    This tool helps you gather information about tournaments and qualifying rounds from various golf association websites.
-    Simply enter the URL of a tournament page and click "Scrape Tournaments".
-    """)
-    
-    # Sidebar for configuration
-    st.sidebar.title("Configuration")
-    
-    # Input for URL
-    url = st.sidebar.text_input(
-        "Tournament Page URL",
-        value="https://www.fsga.org/TournamentResults"
-    )
-    
-    # Site profile detection
-    if url:
-        profile_id = TournamentSiteDetector.detect_profile(url)
-        if profile_id:
-            profile = TournamentSiteDetector.get_profile(profile_id)
-            st.sidebar.success(f"Detected site profile: {profile['name']}")
-            use_profile = st.sidebar.checkbox("Use optimized site profile?", value=True)
-        else:
-            use_profile = False
+    # Extract detail URL from link
+    if element.name == 'a' and 'href' in element.attrs:
+        url = element['href']
+        # Make absolute URL
+        if not url.startswith(('http://', 'https://')):
+            url = urljoin(base_url, url)
+        tournament_data['Detail URL'] = url
     else:
-        use_profile = False
-        profile_id = None
+        # Look for a link inside the element
+        link = element.find('a')
+        if link and 'href' in link.attrs:
+            url = link['href']
+            # Make absolute URL
+            if not url.startswith(('http://', 'https://')):
+                url = urljoin(base_url, url)
+            tournament_data['Detail URL'] = url
     
-    # Advanced options
-    with st.sidebar.expander("Advanced Options"):
-        max_details = st.number_input("Maximum detail pages to scrape (0 = None)", min_value=0, value=10, step=1)
-        max_details = None if max_details == 0 else max_details
-        
-        use_threading = st.checkbox("Use multi-threading for faster scraping", value=True)
-        max_workers = st.slider("Maximum concurrent workers", min_value=1, max_value=10, value=5)
-        
-        cache_duration = st.number_input("Cache duration (hours)", min_value=1, max_value=72, value=24)
-        
-        show_debug = st.checkbox("Show debug information", value=False)
-        
-        if show_debug:
-            logging.getLogger().setLevel(logging.DEBUG)
-        else:
-            logging.getLogger().setLevel(logging.INFO)
+    # Extract date
+    date_element = None
+    date_selectors = [
+        '.event-date', '.tournament-date', '.date',
+        '.event-schedule', '.schedule'
+    ]
     
-    # Create tabs for different functionality
-    tab1, tab2, tab3, tab4 = st.tabs(["Scraper", "Visualizations", "Export", "Site Profiles"])
+    for selector in date_selectors:
+        date_element = element.select_one(selector)
+        if date_element:
+            break
     
-    with tab1:
-        # Button to start scraping
-        if st.button("Scrape Tournaments", type="primary"):
-            if url:
-                with st.spinner('Scraping data...'):
-                    try:
-                        # Determine scraping method
-                        if use_profile and profile_id:
-                            # Use profile-specific scraping
-                            tournaments = TournamentSiteDetector.scrape_with_profile(url, profile_id, max_details)
-                        else:
-                            # Use generic scraping
-                            tournaments = scrape_tournaments(
-                                url, 
-                                max_details=max_details, 
-                                show_progress=True,
-                                use_threading=use_threading,
-                                max_workers=max_workers
-                            )
-                        
-                        if not tournaments:
-                            st.error("No tournament data found. The website structure might not be supported.")
-                        else:
-                            # Store the data in session state for filtering
-                            st.session_state.tournaments = tournaments
-                            st.session_state.filtered_tournaments = tournaments
-                            
-                            # Display results
-                            st.success(f"Found {len(tournaments)} tournaments")
-                            
-                            # Count qualifiers
-                            qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
-                            st.info(f"Including {qualifier_count} qualifying rounds")
-                            
-                            # Perform analysis
-                            analysis = analyze_tournament_data(tournaments)
-                            st.session_state.analysis = analysis
-                            
-                    except Exception as e:
-                        st.error(f"An error occurred during scraping: {str(e)}")
-                        if show_debug:
-                            st.exception(e)
-            else:
-                st.error("Please enter a valid URL")
-        
-        # Initialize session state if not exists
-        if 'tournaments' not in st.session_state:
-            st.session_state.tournaments = []
-        
-        if 'filtered_tournaments' not in st.session_state:
-            st.session_state.filtered_tournaments = []
-        
-        if 'analysis' not in st.session_state:
-            st.session_state.analysis = {}
-        
-        # Only show filters and results if we have tournaments
-        if st.session_state.tournaments:
-            # Display filter options in separate columns
-            st.subheader("Filter Results")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                # Filter by tournament type
-                tournament_types = ["All"] + sorted(list(set(t.get('Tournament Type') for t in st.session_state.tournaments if t.get('Tournament Type'))))
-                selected_type = st.selectbox("Tournament Type", tournament_types)
-            
-            with col2:
-                # Filter by qualifier status
-                qualifier_status = st.radio("Qualifier Status", ["All", "Qualifiers Only", "Non-Qualifiers Only"])
-            
-            with col3:
-                # Filter by text search
-                search_text = st.text_input("Search (tournament name, location, course)")
-                
-                # Date range filter
-                date_filter = st.checkbox("Filter by date range")
-            
-            # Date range selector (only show if date filter is checked)
-            if date_filter:
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start date", value=None)
-                with col2:
-                    end_date = st.date_input("End date", value=None)
-            else:
-                start_date = None
-                end_date = None
-            
-            # Apply filters
-            filtered_tournaments = st.session_state.tournaments.copy()
-            
-            # Filter by tournament type
-            if selected_type != "All":
-                filtered_tournaments = [t for t in filtered_tournaments if t.get('Tournament Type') == selected_type]
-            
-            # Filter by qualifier status
-            if qualifier_status == "Qualifiers Only":
-                filtered_tournaments = [t for t in filtered_tournaments if t.get('Is Qualifier')]
-            elif qualifier_status == "Non-Qualifiers Only":
-                filtered_tournaments = [t for t in filtered_tournaments if not t.get('Is Qualifier')]
-            
-            # Filter by search text
-            if search_text:
-                search_text = search_text.lower()
-                filtered_tournaments = [t for t in filtered_tournaments if 
-                                      (t.get('Tournament Name') and search_text in t.get('Tournament Name').lower()) or
-                                      (t.get('Location') and search_text in t.get('Location').lower()) or
-                                      (t.get('Golf Course Name') and search_text in t.get('Golf Course Name').lower()) or
-                                      (t.get('Description') and search_text in t.get('Description').lower())]
-            
-            # Filter by date range
-            if date_filter and start_date and end_date:
-                # Convert to datetime objects for comparison
-                start_date_str = start_date.strftime('%Y-%m-%d')
-                end_date_str = end_date.strftime('%Y-%m-%d')
-                
-                # Filter tournaments with valid dates
-                filtered_tournaments = [t for t in filtered_tournaments if 
-                                      t.get('Date') and 
-                                      t.get('Date') != 'TBD' and
-                                      '-' in t.get('Date', '') and
-                                      start_date_str <= t.get('Date') <= end_date_str]
-            
-            # Store filtered tournaments in session state
-            st.session_state.filtered_tournaments = filtered_tournaments
-            
-            # Display results
-            st.subheader("Tournament Data")
-            
-            # Create a more readable display table
-            display_data = []
-            for t in filtered_tournaments:
-                display_row = {
-                    'Name': t.get('Tournament Name', ''),
-                    'Date': t.get('Date', 'N/A'),
-                    'Course': t.get('Golf Course Name', 'N/A'),
-                    'Location': t.get('Location', 'N/A'),
-                    'Type': t.get('Tournament Type', ''),
-                    'Is Qualifier': '✓' if t.get('Is Qualifier') else ''
-                }
-                
-                # Add parent tournament for qualifiers
-                if t.get('Parent Tournament'):
-                    display_row['Parent Tournament'] = t.get('Parent Tournament')
-                
-                # Add days for multi-day tournaments
-                if t.get('Days') and t.get('Days') > 1:
-                    display_row['Days'] = t.get('Days')
-                
-                # Add entry fee if available
-                if t.get('Entry Fee'):
-                    display_row['Entry Fee'] = t.get('Entry Fee')
-                
-                display_data.append(display_row)
-            
-            # Show data table
-            st.dataframe(display_data, use_container_width=True)
-            
-            # Show download link (will be moved to Export tab)
-            st.markdown(get_table_download_link(filtered_tournaments), unsafe_allow_html=True)
-            
-            # Show tournament details on click
-            if st.checkbox("Show detailed information for selected tournament"):
-                selected_tournament_name = st.selectbox(
-                    "Select a tournament", 
-                    options=[t.get('Tournament Name', 'Unknown') for t in filtered_tournaments]
-                )
-                
-                # Find the selected tournament
-                selected_tournament = next(
-                    (t for t in filtered_tournaments if t.get('Tournament Name') == selected_tournament_name), 
-                    None
-                )
-                
-                if selected_tournament:
-                    st.subheader(f"Details for {selected_tournament_name}")
-                    
-                    # Display tournament details
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Date:**", selected_tournament.get('Date', 'N/A'))
-                        st.write("**Golf Course:**", selected_tournament.get('Golf Course Name', 'N/A'))
-                        st.write("**Location:**", selected_tournament.get('Location', 'N/A'))
-                        st.write("**Tournament Type:**", selected_tournament.get('Tournament Type', 'N/A'))
-                        
-                        if selected_tournament.get('Is Qualifier'):
-                            st.write("**Parent Tournament:**", selected_tournament.get('Parent Tournament', 'N/A'))
-                        
-                        if selected_tournament.get('Days'):
-                            st.write("**Duration:**", f"{selected_tournament.get('Days')} days")
-                            
-                    with col2:
-                        if selected_tournament.get('Entry Fee'):
-                            st.write("**Entry Fee:**", selected_tournament.get('Entry Fee'))
-                        
-                        if selected_tournament.get('Prize Money'):
-                            st.write("**Prize Money:**", selected_tournament.get('Prize Money'))
-                        
-                        if selected_tournament.get('Registration Deadline'):
-                            st.write("**Registration Deadline:**", selected_tournament.get('Registration Deadline'))
-                        
-                        if selected_tournament.get('Contact Info'):
-                            st.write("**Contact:**", selected_tournament.get('Contact Info'))
-                    
-                    # Show description if available
-                    if selected_tournament.get('Description'):
-                        st.subheader("Description")
-                        st.write(selected_tournament.get('Description'))
-                    
-                    # Show detail link if available
-                    if selected_tournament.get('Detail URL'):
-                        st.markdown(f"[View Tournament Page]({selected_tournament.get('Detail URL')})")
-                    
-                    # Show qualifiers if this is a parent tournament
-                    qualifiers = [
-                        t for t in filtered_tournaments 
-                        if t.get('Parent Tournament ID') == selected_tournament.get('Tournament ID')
-                    ]
-                    
-                    if qualifiers:
-                        st.subheader("Qualifying Rounds")
-                        for q in qualifiers:
-                            st.write(f"- **{q.get('Tournament Name')}** - {q.get('Date', 'TBD')} at {q.get('Golf Course Name', 'TBD')}")
-    
-    with tab2:
-        if 'tournaments' in st.session_state and st.session_state.tournaments:
-            st.subheader("Tournament Analysis")
-            
-            # Show statistics if available
-            if 'analysis' in st.session_state and st.session_state.analysis:
-                analysis = st.session_state.analysis
-                
-                # Create columns for statistics
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Count by tournament type
-                    if analysis.get('tournament_types'):
-                        st.write("**Tournament Types:**")
-                        for t_type, count in sorted(analysis['tournament_types'].items()):
-                            st.write(f"- {t_type}: {count}")
-                    
-                    # Count by locations
-                    if analysis.get('locations'):
-                        st.write("**Top Locations:**")
-                        for location, count in sorted(analysis['locations'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                            st.write(f"- {location}: {count}")
-                
-                with col2:
-                    # Count by month 
-                    if analysis.get('months'):
-                        st.write("**Tournaments by Month:**")
-                        for month_name, count in analysis['months'].items():
-                            st.write(f"- {month_name}: {count}")
-                    
-                    # Average tournament length
-                    if analysis.get('avg_tournament_length'):
-                        st.write(f"**Average Tournament Length:** {analysis['avg_tournament_length']} days")
-                
-                # Create tournament calendar visualization
-                st.subheader("Tournament Calendar")
-                
-                # Filter tournaments with valid dates
-                tournaments_with_dates = [
-                    t for t in st.session_state.tournaments 
-                    if t.get('Date') and t.get('Date') != 'TBD' and '-' in t.get('Date', '')
-                ]
-                
-                if tournaments_with_dates:
-                    # Convert to DataFrame for easier visualization
-                    df = pd.DataFrame(tournaments_with_dates)
-                    df['Date'] = pd.to_datetime(df['Date'])
-                    df['Month'] = df['Date'].dt.month
-                    df['Year'] = df['Date'].dt.year
-                    
-                    # Group by month
-                    monthly_counts = df.groupby(['Year', 'Month']).size().reset_index(name='Count')
-                    
-                    # Create chart data for display
-                    chart_data = pd.DataFrame({
-                        'Month': monthly_counts.apply(lambda x: f"{x['Year']}-{x['Month']:02d}", axis=1),
-                        'Tournaments': monthly_counts['Count']
-                    })
-                    
-                    # Display the chart
-                    st.bar_chart(chart_data.set_index('Month'))
-                else:
-                    st.info("No tournaments with valid dates found for calendar visualization.")
-                
-                # Tournament network visualization
-                st.subheader("Tournament & Qualifier Network")
-                
-                # Filter to include only tournaments with qualifiers
-                tournaments_with_qualifiers = [
-                    t for t in st.session_state.tournaments 
-                    if any(q.get('Parent Tournament ID') == t.get('Tournament ID') 
-                          for q in st.session_state.tournaments)
-                ]
-                
-                # Add the qualifiers to the list
-                qualifier_ids = [
-                    q.get('Parent Tournament ID') for q in st.session_state.tournaments 
-                    if q.get('Parent Tournament ID')
-                ]
-                
-                network_tournaments = tournaments_with_qualifiers + [
-                    q for q in st.session_state.tournaments 
-                    if q.get('Parent Tournament ID') in [t.get('Tournament ID') for t in tournaments_with_qualifiers]
-                ]
-                
-                if network_tournaments:
-                    # Display network visualization using HTML/JavaScript
-                    st.info("Network visualization shows connections between tournaments and their qualifying rounds.")
-                    
-                    # Create simple HTML representation
-                    network_data = create_tournament_network(network_tournaments)
-                    
-                    # Display tournament count in network
-                    st.write(f"**Showing network for {len(network_data['nodes'])} tournaments and qualifiers**")
-                    
-                    # Display sample of connections
-                    st.write("**Sample connections:**")
-                    edge_count = min(5, len(network_data['edges']))
-                    for i in range(edge_count):
-                        edge = network_data['edges'][i]
-                        source = network_data['nodes'][edge['source']]['name']
-                        target = network_data['nodes'][edge['target']]['name']
-                        st.write(f"- {source} → {target}")
-                else:
-                    st.info("No tournaments with qualifying rounds found for network visualization.")
-    
-    with tab3:
-        if 'tournaments' in st.session_state and st.session_state.tournaments:
-            st.subheader("Export Options")
-            
-            # Export format selection
-            export_format = st.radio(
-                "Select export format",
-                ["CSV", "JSON", "Excel"]
-            )
-            
-            # Export contents selection
-            export_selection = st.radio(
-                "Select data to export",
-                ["All tournaments", "Filtered tournaments only", "Selected tournaments"]
-            )
-            
-            if export_selection == "Selected tournaments":
-                # Multi-select for tournaments
-                selected_tournaments = st.multiselect(
-                    "Select tournaments to export",
-                    options=[t.get('Tournament Name', 'Unknown') for t in st.session_state.tournaments]
-                )
-                
-                # Filter to selected tournaments
-                export_data = [
-                    t for t in st.session_state.tournaments 
-                    if t.get('Tournament Name') in selected_tournaments
-                ]
-            elif export_selection == "Filtered tournaments only":
-                export_data = st.session_state.filtered_tournaments
-            else:
-                export_data = st.session_state.tournaments
-            
-            # Custom filename
-            filename = st.text_input("Filename", value="tournament_data")
-            
-            # Create export links
-            if export_format == "CSV":
-                st.markdown(get_table_download_link(export_data, f"{filename}.csv"), unsafe_allow_html=True)
-            elif export_format == "JSON":
-                st.markdown(get_json_download_link(export_data, f"{filename}.json"), unsafe_allow_html=True)
-            elif export_format == "Excel":
-                # Create Excel export
-                excel_buffer = io.BytesIO()
-                df = pd.DataFrame(export_data)
-                df.to_excel(excel_buffer, index=False)
-                excel_data = excel_buffer.getvalue()
-                b64 = base64.b64encode(excel_data).decode()
-                href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}.xlsx">Download Excel file</a>'
-                st.markdown(href, unsafe_allow_html=True)
-            
-            # Additional export options
-            st.subheader("Additional Export Options")
-            
-            # Export for calendar integration
-            if st.checkbox("Generate iCalendar (ICS) file for calendar integration"):
-                # Create iCalendar data
-                from icalendar import Calendar, Event
-                import pytz
-                from datetime import datetime, timedelta
-                
-                cal = Calendar()
-                cal.add('prodid', '-//Enhanced Golf Tournament Scraper//EN')
-                cal.add('version', '2.0')
-                
-                # Add tournaments to calendar
-                added_count = 0
-                for tournament in export_data:
-                    if not tournament.get('Date') or tournament.get('Date') == 'TBD' or '-' not in tournament.get('Date', ''):
-                        continue
-                    
-                    event = Event()
-                    event.add('summary', tournament.get('Tournament Name', 'Golf Tournament'))
-                    
-                    # Parse date
-                    start_date = datetime.strptime(tournament.get('Date'), '%Y-%m-%d')
-                    
-                    # Set end date (use Days if available, otherwise default to 1 day)
-                    days = tournament.get('Days', 1)
-                    if not days:
-                        days = 1
-                    end_date = start_date + timedelta(days=days)
-                    
-                    event.add('dtstart', start_date.date())
-                    event.add('dtend', end_date.date())
-                    
-                    # Add location if available
-                    location_parts = []
-                    if tournament.get('Golf Course Name'):
-                        location_parts.append(tournament.get('Golf Course Name'))
-                    if tournament.get('Location'):
-                        location_parts.append(tournament.get('Location'))
-                    
-                    if location_parts:
-                        event.add('location', ', '.join(location_parts))
-                    
-                    # Add description if available
-                    description_parts = []
-                    if tournament.get('Description'):
-                        description_parts.append(tournament.get('Description'))
-                    if tournament.get('Entry Fee'):
-                        description_parts.append(f"Entry Fee: {tournament.get('Entry Fee')}")
-                    if tournament.get('Prize Money'):
-                        description_parts.append(f"Prize Money: {tournament.get('Prize Money')}")
-                    if tournament.get('Contact Info'):
-                        description_parts.append(f"Contact: {tournament.get('Contact Info')}")
-                    if tournament.get('Detail URL'):
-                        description_parts.append(f"More Info: {tournament.get('Detail URL')}")
-                    
-                    if description_parts:
-                        event.add('description', '\n\n'.join(description_parts))
-                    
-                    # Add to calendar
-                    cal.add_component(event)
-                    added_count += 1
-                
-                # Generate ICS file
-                ics_data = cal.to_ical()
-                b64 = base64.b64encode(ics_data).decode()
-                href = f'<a href="data:text/calendar;base64,{b64}" download="{filename}.ics">Download iCalendar file ({added_count} events)</a>'
-                st.markdown(href, unsafe_allow_html=True)
-            
-            # Export for integration with other golf tools
-            if st.checkbox("Generate data for integration with other golf tools"):
-                # Create custom JSON format
-                integration_data = []
-                
-                for tournament in export_data:
-                    # Create simplified structure
-                    entry = {
-                        'name': tournament.get('Tournament Name', ''),
-                        'date': tournament.get('Date', ''),
-                        'venue': tournament.get('Golf Course Name', ''),
-                        'location': tournament.get('Location', ''),
-                        'type': tournament.get('Tournament Type', ''),
-                        'isQualifier': tournament.get('Is Qualifier', False),
-                    }
-                    
-                    # Add optional fields if available
-                    if tournament.get('Days'):
-                        entry['days'] = tournament.get('Days')
-                    
-                    if tournament.get('Entry Fee'):
-                        entry['entryFee'] = tournament.get('Entry Fee')
-                    
-                    if tournament.get('Prize Money'):
-                        entry['prizeMoney'] = tournament.get('Prize Money')
-                    
-                    if tournament.get('Parent Tournament'):
-                        entry['parentTournament'] = tournament.get('Parent Tournament')
-                    
-                    if tournament.get('Parent Tournament ID'):
-                        entry['parentTournamentId'] = tournament.get('Parent Tournament ID')
-                    
-                    integration_data.append(entry)
-                
-                # Generate integration JSON
-                json_str = json.dumps(integration_data, indent=2)
-                b64 = base64.b64encode(json_str.encode()).decode()
-                href = f'<a href="data:application/json;base64,{b64}" download="{filename}_integration.json">Download Integration JSON</a>'
-                st.markdown(href, unsafe_allow_html=True)
-    
-    with tab4:
-        st.subheader("Site Profiles")
-        
-        # Display available site profiles
-        profiles = TournamentSiteDetector.get_all_profiles()
-        
-        st.write("""
-        The scraper can use optimized profiles for specific golf tournament websites.
-        These profiles help improve the data extraction quality for supported sites.
-        """)
-        
-        # Show supported sites
-        st.write("**Currently supported sites:**")
-        for profile_id, profile in profiles.items():
-            st.write(f"- **{profile['name']}** ({profile_id})")
-        
-        # Add new profile section
-        st.subheader("Add Custom Site Profile")
-        
-        with st.expander("Define a new site profile"):
-            new_profile_name = st.text_input("Site Name", value="")
-            new_profile_id = st.text_input("Profile ID", value="").lower()
-            
-            # Pattern matching
-            st.write("Add URL patterns to match (comma separated):")
-            patterns = st.text_input("Patterns", value="")
-            
-            # Selector configuration
-            st.write("Configure selectors (advanced):")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                tournament_selector = st.text_input("Tournament selector", value="")
-                name_selector = st.text_input("Name selector", value="")
-            
-            with col2:
-                date_selector = st.text_input("Date selector", value="")
-                location_selector = st.text_input("Location selector", value="")
-            
-            if st.button("Add Profile"):
-                if new_profile_name and new_profile_id and tournament_selector:
-                    # Create new profile structure
-                    new_profile = {
-                        'name': new_profile_name,
-                        'patterns': [p.strip() for p in patterns.split(',') if p.strip()],
-                        'selectors': {
-                            'tournaments': [
-                                {'selector': tournament_selector, 'type': 'auto'}
-                            ],
-                            'name': [
-                                {'selector': name_selector or 'a', 'attribute': 'text'}
-                            ],
-                            'date': [
-                                {'selector': date_selector or 'span.date', 'attribute': 'text'}
-                            ],
-                            'location': [
-                                {'selector': location_selector or 'span.location', 'attribute': 'text'}
-                            ]
-                        }
-                    }
-                    
-                    # Store in session state
-                    if 'custom_profiles' not in st.session_state:
-                        st.session_state.custom_profiles = {}
-                    
-                    st.session_state.custom_profiles[new_profile_id] = new_profile
-                    
-                    st.success(f"Added profile: {new_profile_name}")
-                else:
-                    st.error("Please provide at least a name, ID, and tournament selector")
-        
-        # Show custom profiles
-        if 'custom_profiles' in st.session_state and st.session_state.custom_profiles:
-            st.subheader("Your Custom Profiles")
-            
-            for profile_id, profile in st.session_state.custom_profiles.items():
-                st.write(f"- **{profile['name']}** ({profile_id})")
-    
-    # Add helpful instructions
-    with st.expander("Tips for Better Results"):
-        st.markdown("""
-        ### Getting the Best Results
-        
-        - **URL Selection**: Use URLs that point directly to tournament listing pages
-        - **Site Profiles**: For supported sites, using the optimized site profile will improve results
-        - **Detail Pages**: The scraper will follow links to detail pages to extract more information
-        - **Qualifier Detection**: The tool looks for qualifying rounds mentioned on tournament pages
-        - **Performance**: Use multi-threading for faster results with many detail pages
-        - **Caching**: Results are cached to improve performance on repeated scrapes
-        - **Exports**: Use the Export tab to generate files for different use cases
-        - **Visualization**: The Visualizations tab provides insights about tournament patterns
-        
-        ### Troubleshooting
-        
-        - If no tournaments are found, try adjusting the URL to point to a listing page
-        - Enable "Show debug information" in Advanced Options to see more details
-        - For partially extracted data, you can manually complete missing fields before export
-        - Try different site profiles if the default scraping doesn't work well
-        """)
-
-if __name__ == "__main__":
-    main()
+    # If date element found, parse the date
+    if date_element:
+        date_text = date_element.get_text().strip()
+        tournament_data['Date'] = parse_date(date_text)
