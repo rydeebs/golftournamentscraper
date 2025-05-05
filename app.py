@@ -45,6 +45,598 @@ def get_json_download_link(data, filename="tournament_data.json"):
     href = f'<a href="data:file/json;base64,{b64}" download="{filename}">Download JSON file</a>'
     return href
 
+# Function to scrape tournament schedule pages (like FSGA tournament lists)
+def scrape_tournament_schedule(url, max_details=None, show_progress=True):
+    """
+    Scrapes a tournament schedule page that lists multiple tournaments
+    
+    Args:
+        url: URL of the tournament schedule page
+        max_details: Maximum number of detail pages to scrape
+        show_progress: Whether to show progress in Streamlit
+        
+    Returns:
+        List of tournament data dictionaries
+    """
+    # Check cache first
+    cache_key = f"schedule_{hashlib.md5(url.encode()).hexdigest()}"
+    cached_data = load_from_cache(cache_key)
+    if cached_data:
+        if show_progress:
+            st.success(f"Loaded {len(cached_data)} tournaments from cache.")
+        return cached_data
+    
+    # Get HTML content
+    html = get_page_html(url)
+    if not html:
+        return []
+    
+    # Parse HTML
+    soup = BeautifulSoup(html, 'html.parser')
+    tournaments = []
+    
+    # Set up progress tracking
+    if show_progress:
+        progress_text = st.empty()
+        progress_bar = st.progress(0.0)
+        progress_text.text("Finding tournaments on schedule page...")
+    
+    # Detect site type
+    site_type = detect_site_type(url, html)
+    
+    # Extract tournaments based on site type
+    if site_type == 'fsga':
+        tournaments = extract_fsga_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
+    elif site_type == 'golfgenius':
+        tournaments = extract_golfgenius_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
+    elif site_type == 'bluegolf':
+        tournaments = extract_bluegolf_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
+    else:
+        tournaments = extract_generic_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
+    
+    # Save to cache
+    if tournaments:
+        save_to_cache(cache_key, tournaments)
+    
+    # Complete progress
+    if show_progress:
+        progress_bar.progress(1.0)
+        qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
+        progress_text.text(f"Found {len(tournaments)} tournaments (including {qualifier_count} qualifying rounds)")
+    
+    return tournaments
+
+# Function to extract FSGA tournament schedule
+def extract_fsga_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
+    """Extract tournaments from an FSGA schedule page"""
+    tournaments = []
+    
+    # Find tournament list elements
+    tournament_items = []
+    
+    # FSGA tournament category/enter list pages often have a list-like structure
+    # Look for date and location patterns that indicate tournament entries
+    all_text = soup.get_text()
+    
+    # Find matches for patterns like "May 1-5" followed by venue and location
+    # This is the most common pattern on FSGA tournament list pages
+    date_venue_matches = re.finditer(r'([A-Za-z]+\s+\d+(?:-\d+)?)\s+Entries\s+Close:.*?([A-Za-z][A-Za-z\s\.,]+),\s+([A-Za-z]+),\s+([A-Z]{2})', all_text)
+    
+    for match in date_venue_matches:
+        date_str, venue, city, state = match.groups()
+        tournament_items.append({
+            'date': date_str.strip(),
+            'venue': venue.strip(),
+            'location': f"{city.strip()}, {state.strip()}"
+        })
+    
+    # If the above pattern didn't work, try an alternative pattern
+    if not tournament_items:
+        # Look for lines containing dates and golf club names
+        lines = all_text.split('\n')
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check if line contains a month name followed by numbers (for date)
+            month_match = re.search(r'\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d+', line)
+            if month_match:
+                # Look for golf course name pattern
+                if "golf" in line.lower() or "club" in line.lower() or "course" in line.lower() or "country" in line.lower():
+                    # Extract venue if possible
+                    venue_match = re.search(r'([A-Za-z][A-Za-z\s\.,&-]+(?:Golf|Country|Club|Course))', line)
+                    venue = venue_match.group(1) if venue_match else None
+                    
+                    # Extract location if possible
+                    location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2})', line)
+                    location = f"{location_match.group(1).strip()}, {location_match.group(2).strip()}" if location_match else None
+                    
+                    # If we have either venue or location, add it
+                    if venue or location:
+                        tournament_items.append({
+                            'date': month_match.group(0),
+                            'venue': venue,
+                            'location': location
+                        })
+    
+    # Look for tournament links and extract tournament names
+    tournament_links = soup.find_all('a', href=lambda href: href and ('/Tournament/Details/' in href or '/Tournament/Index/' in href))
+    for i, link in enumerate(tournament_links):
+        # Only process as many as we have items for
+        if i >= len(tournament_items):
+            break
+            
+        name = link.get_text().strip()
+        if name and len(name) > 5:
+            tournament_items[i]['name'] = name
+            tournament_items[i]['url'] = link['href'] if not link['href'].startswith(('http://', 'https://')) else link['href']
+    
+    # Get total count for progress calculation
+    total_items = len(tournament_items)
+    
+    # Process each tournament
+    for i, item in enumerate(tournament_items):
+        # Update progress
+        if show_progress and progress_bar and total_items > 0:
+            progress = i / total_items
+            progress_bar.progress(progress)
+            if progress_text:
+                progress_text.text(f"Processing tournament {i+1} of {total_items}...")
+        
+        # Create tournament data
+        tournament_data = {
+            'Tournament Name': item.get('name', f"Tournament on {item.get('date')}"),
+            'Date': parse_date(item.get('date')),
+            'Golf Course Name': item.get('venue'),
+            'Location': item.get('location'),
+            'Tournament Type': None,
+            'Is Qualifier': False,
+            'Has Qualifiers': None,
+            'Detail URL': urljoin(url, item.get('url')) if item.get('url') else None,
+            'Eligibility': None
+        }
+        
+        # Try to determine if this is a qualifier based on name
+        if tournament_data['Tournament Name']:
+            tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Tournament Name'])
+            
+            if tournament_data['Is Qualifier']:
+                tournament_data['Tournament Type'] = 'Qualifying Round'
+            else:
+                tournament_data['Tournament Type'] = determine_tournament_type(tournament_data['Tournament Name'])
+        
+        # Generate unique ID
+        tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+        
+        # Only add if we have a name and date
+        if tournament_data['Tournament Name'] and tournament_data['Date']:
+            tournaments.append(tournament_data)
+        
+        # If we have a detail URL and within max_details limit, get additional info
+        if tournament_data.get('Detail URL') and (max_details is None or i < max_details):
+            detail_html = get_page_html(tournament_data['Detail URL'])
+            if detail_html:
+                detail_soup = BeautifulSoup(detail_html, 'html.parser')
+                
+                # Extract additional details
+                detail_info = parse_fsga_tournament_detail(detail_soup, tournament_data['Detail URL'])
+                if detail_info:
+                    # Update tournament data with detail information
+                    for key, value in detail_info.items():
+                        if key != 'Tournament Name' and value:  # Keep original name if available
+                            tournament_data[key] = value
+                
+                # Check for qualifiers
+                qualifiers = parse_fsga_qualifiers(detail_soup, tournament_data['Detail URL'], tournament_data)
+                if qualifiers:
+                    tournaments.extend(qualifiers)
+                    
+                    # Update main tournament to indicate it has qualifiers
+                    tournament_data['Has Qualifiers'] = True
+                    tournament_data['Qualifier Count'] = len(qualifiers)
+    
+    return tournaments
+
+# Function to extract GolfGenius tournament schedule
+def extract_golfgenius_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
+    """Extract tournaments from a GolfGenius schedule page"""
+    tournaments = []
+    
+    # Find event links
+    event_links = soup.find_all('a', href=lambda href: href and ('page' in href.lower() or 'event' in href.lower()))
+    
+    # If no direct links found, try to find category links first
+    if not event_links:
+        category_links = soup.find_all('a', string=lambda s: s and ('events' in s.lower() or 'tournaments' in s.lower() or 'schedule' in s.lower()))
+        
+        # Try to follow each category link
+        for link in category_links:
+            if 'href' in link.attrs:
+                category_url = link['href']
+                # Make absolute URL
+                if not category_url.startswith(('http://', 'https://')):
+                    category_url = urljoin(url, category_url)
+                
+                # Get category page
+                category_html = get_page_html(category_url)
+                if category_html:
+                    category_soup = BeautifulSoup(category_html, 'html.parser')
+                    
+                    # Find event links on the category page
+                    category_event_links = category_soup.find_all('a', href=lambda href: href and ('page' in href.lower() or 'event' in href.lower()))
+                    if category_event_links:
+                        event_links.extend(category_event_links)
+    
+    # Get total count for progress calculation
+    total_links = len(event_links)
+    
+    # Process each event link
+    for i, link in enumerate(event_links):
+        # Update progress
+        if show_progress and progress_bar and total_links > 0:
+            progress = i / total_links
+            progress_bar.progress(progress)
+            if progress_text:
+                progress_text.text(f"Processing GolfGenius event {i+1} of {total_links}...")
+        
+        # Extract event info
+        event_name = link.get_text().strip()
+        if not event_name or len(event_name) < 5:
+            continue
+        
+        # Get event URL
+        event_url = link['href']
+        # Make absolute URL
+        if not event_url.startswith(('http://', 'https://')):
+            event_url = urljoin(url, event_url)
+        
+        # Create basic tournament data
+        tournament_data = {
+            'Tournament Name': event_name,
+            'Date': None,
+            'Golf Course Name': None,
+            'Location': None,
+            'Tournament Type': None,
+            'Is Qualifier': is_qualifier_tournament(event_name),
+            'Has Qualifiers': None,
+            'Detail URL': event_url,
+            'Eligibility': None
+        }
+        
+        # Determine tournament type
+        if tournament_data['Is Qualifier']:
+            tournament_data['Tournament Type'] = 'Qualifying Round'
+        else:
+            tournament_data['Tournament Type'] = determine_tournament_type(event_name)
+        
+        # Generate unique ID
+        tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+        
+        # Add the tournament
+        tournaments.append(tournament_data)
+        
+        # If within max_details limit, get additional info
+        if max_details is None or i < max_details:
+            event_html = get_page_html(event_url)
+            if event_html:
+                event_soup = BeautifulSoup(event_html, 'html.parser')
+                
+                # Extract detailed information
+                detail_info = parse_golfgenius_tournament_detail(event_soup, event_url)
+                if detail_info:
+                    # Update tournament data with detail information
+                    for key, value in detail_info.items():
+                        if key != 'Tournament Name' and value:  # Keep original name
+                            tournament_data[key] = value
+                
+                # Check for qualifiers
+                qualifiers = extract_qualifier_info(event_html, event_url, tournament_data)
+                if qualifiers:
+                    tournaments.extend(qualifiers)
+                    
+                    # Update main tournament to indicate it has qualifiers
+                    tournament_data['Has Qualifiers'] = True
+                    tournament_data['Qualifier Count'] = len(qualifiers)
+    
+    return tournaments
+
+# Function to extract BlueGolf tournament schedule
+def extract_bluegolf_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
+    """Extract tournaments from a BlueGolf schedule page"""
+    tournaments = []
+    
+    # Find tournament elements
+    tournament_elements = []
+    
+    # Look for tournament rows or list items
+    selectors = [
+        'tr.tournamentItem',
+        'div.tournamentItem',
+        'tr.eventRow',
+        'div.eventRow',
+        'li.eventItem',
+        'div.eventItem'
+    ]
+    
+    for selector in selectors:
+        elements = soup.select(selector)
+        if elements:
+            tournament_elements.extend(elements)
+    
+    # If no elements found, look for tournament links
+    if not tournament_elements:
+        links = soup.find_all('a', href=lambda href: href and ('tournament' in href.lower() or 'event' in href.lower()))
+        
+        for link in links:
+            # Try to find parent element
+            parent = link.find_parent(['div', 'li', 'tr'])
+            if parent and parent not in tournament_elements:
+                tournament_elements.append(parent)
+            elif link not in tournament_elements:
+                tournament_elements.append(link)
+    
+    # Get total count for progress calculation
+    total_elements = len(tournament_elements)
+    
+    # Process each tournament element
+    for i, element in enumerate(tournament_elements):
+        # Update progress
+        if show_progress and progress_bar and total_elements > 0:
+            progress = i / total_elements
+            progress_bar.progress(progress)
+            if progress_text:
+                progress_text.text(f"Processing BlueGolf tournament {i+1} of {total_elements}...")
+        
+        # Extract tournament data
+        tournament = parse_bluegolf_tournament_item(element, url)
+        
+        if tournament:
+            tournaments.append(tournament)
+            
+            # If we have a detail URL and within max_details limit, get additional info
+            if tournament.get('Detail URL') and (max_details is None or i < max_details):
+                detail_html = get_page_html(tournament['Detail URL'])
+                if detail_html:
+                    detail_soup = BeautifulSoup(detail_html, 'html.parser')
+                    
+                    # Extract eligibility information
+                    eligibility_info = extract_eligibility_info(detail_html)
+                    if eligibility_info:
+                        tournament['Eligibility'] = eligibility_info
+                    
+                    # Extract qualifier information
+                    qualifiers = extract_qualifier_info(detail_html, tournament['Detail URL'], tournament)
+                    if qualifiers:
+                        tournaments.extend(qualifiers)
+                        
+                        # Update main tournament to indicate it has qualifiers
+                        tournament['Has Qualifiers'] = True
+                        tournament['Qualifier Count'] = len(qualifiers)
+                    else:
+                        tournament['Has Qualifiers'] = False
+    
+    return tournaments
+
+# Function to extract tournaments from generic schedule page
+def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
+    """Extract tournaments from a generic schedule page"""
+    tournaments = []
+    
+    # Look for date patterns in the page
+    all_text = soup.get_text()
+    date_matches = list(re.finditer(r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d+(?:-\d+)?,?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}', all_text))
+    
+    # Find tournament elements or links
+    tournament_elements = []
+    
+    # Try various selectors for tournament items
+    selectors = [
+        'table tr',
+        'div.item',
+        'div.event',
+        'div.tournament',
+        'li',
+        'article',
+        'div.card'
+    ]
+    
+    for selector in selectors:
+        elements = soup.select(selector)
+        if elements:
+            tournament_elements.extend(elements)
+    
+    # If no elements found, try to use date patterns to identify tournaments
+    if not tournament_elements and date_matches:
+        for i, date_match in enumerate(date_matches):
+            # Get context around the date
+            start_pos = max(0, date_match.start() - 100)
+            end_pos = min(len(all_text), date_match.end() + 100)
+            context = all_text[start_pos:end_pos]
+            
+            # Extract tournament name
+            lines = context.split('\n')
+            name = None
+            for line in lines:
+                line = line.strip()
+                if line and len(line) > 5 and date_match.group(0) not in line:
+                    # Check if line looks like a tournament name
+                    if any(keyword in line.lower() for keyword in ['championship', 'tournament', 'open', 'classic', 'invitational', 'amateur']):
+                        name = line
+                        break
+            
+            # Extract location
+            location_match = re.search(r'([A-Za-z\s\.]+),\s*([A-Z]{2}|[A-Za-z\s]+)', context)
+            location = None
+            if location_match:
+                city, state = location_match.groups()
+                location = f"{city.strip()}, {state.strip()}"
+            
+            # Extract golf course
+            course_match = re.search(r'(?:at|venue|location|course)[:;-]?\s*([\w\s\.\&\-\']+(?:Golf Club|Country Club|Golf Course|Golf & Country Club|Links|Club|Course))', context, re.I)
+            course = course_match.group(1).strip() if course_match else None
+            
+            # Create tournament data
+            if name:
+                tournament_data = {
+                    'Tournament Name': name,
+                    'Date': parse_date(date_match.group(0)),
+                    'Golf Course Name': course,
+                    'Location': location,
+                    'Tournament Type': None,
+                    'Is Qualifier': is_qualifier_tournament(name),
+                    'Has Qualifiers': None,
+                    'Detail URL': None,
+                    'Eligibility': None
+                }
+                
+                # Determine tournament type
+                if tournament_data['Is Qualifier']:
+                    tournament_data['Tournament Type'] = 'Qualifying Round'
+                else:
+                    tournament_data['Tournament Type'] = determine_tournament_type(name)
+                
+                # Generate unique ID
+                tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+                
+                tournaments.append(tournament_data)
+    else:
+        # Process each tournament element
+        total_elements = len(tournament_elements)
+        
+        for i, element in enumerate(tournament_elements):
+            # Update progress
+            if show_progress and progress_bar and total_elements > 0:
+                progress = i / total_elements
+                progress_bar.progress(progress)
+                if progress_text:
+                    progress_text.text(f"Processing tournament {i+1} of {total_elements}...")
+            
+            # Extract tournament data
+            tournament = parse_generic_tournament_item(element, url)
+            
+            if tournament:
+                tournaments.append(tournament)
+                
+                # If we have a detail URL and within max_details limit, get additional info
+                if tournament.get('Detail URL') and (max_details is None or i < max_details):
+                    detail_html = get_page_html(tournament['Detail URL'])
+                    if detail_html:
+                        # Extract eligibility information
+                        eligibility_info = extract_eligibility_info(detail_html)
+                        if eligibility_info:
+                            tournament['Eligibility'] = eligibility_info
+                        
+                        # Extract qualifier information
+                        qualifiers = extract_qualifier_info(detail_html, tournament['Detail URL'], tournament)
+                        if qualifiers:
+                            tournaments.extend(qualifiers)
+                            
+                            # Update main tournament to indicate it has qualifiers
+                            tournament['Has Qualifiers'] = True
+                            tournament['Qualifier Count'] = len(qualifiers)
+                        else:
+                            tournament['Has Qualifiers'] = False
+    
+    return tournaments
+
+# Modify the main function to include the new scraper
+def main():
+    st.set_page_config(page_title="Golf Tournament & Qualifier Scraper", layout="wide")
+    
+    st.title("Golf Tournament & Qualifier Scraper")
+    
+    st.markdown("""
+    ## Extract tournament and qualifier information from golf association websites
+    
+    This tool helps you gather information about tournaments and their qualifying rounds from various golf websites.
+    Simply enter the URL of a tournament page and click "Scrape Tournaments".
+    
+    The scraper will identify:
+    1. Tournaments and their details
+    2. Whether tournaments have qualifying rounds
+    3. Details of all qualifying rounds
+    4. Eligibility information if no qualifying rounds are available
+    """)
+    
+    # Sidebar for configuration
+    st.sidebar.title("Configuration")
+    
+    # Input for URL
+    url = st.sidebar.text_input(
+        "Tournament Page URL",
+        value="https://www.fsga.org/Tournament/Details/6031cb23-72d9-45d8-8b14-1c15808a1ae0"
+    )
+    
+    # Page type selection
+    page_type = st.sidebar.radio(
+        "Select the type of page to scrape",
+        ["Auto-detect", "Tournament Detail", "Tournament Schedule/List"]
+    )
+    
+    # Advanced options
+    with st.sidebar.expander("Advanced Options"):
+        max_details = st.number_input("Maximum detail pages to scrape (0 = None)", min_value=0, value=10, step=1)
+        max_details = None if max_details == 0 else max_details
+        
+        show_debug = st.checkbox("Show debug information", value=False)
+        
+        if show_debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+        else:
+            logging.getLogger().setLevel(logging.INFO)
+    
+    # Create tabs for different functionality
+    tab1, tab2, tab3 = st.tabs(["Scraper", "Export", "Help"])
+    
+    with tab1:
+        # Button to start scraping
+        if st.button("Scrape Tournaments", type="primary"):
+            if url:
+                with st.spinner('Scraping data...'):
+                    try:
+                        # Determine which scraper to use based on page type
+                        if page_type == "Tournament Detail" or (page_type == "Auto-detect" and ('/Tournament/Details/' in url or '/pages/' in url and not '/pages/12' in url)):
+                            # Use the focused scraper for detail pages
+                            tournaments = scrape_tournament_focused(url, max_details=max_details, show_progress=True)
+                        elif page_type == "Tournament Schedule/List" or (page_type == "Auto-detect" and ('/TournamentCategory/' in url or '/pages/12' in url)):
+                            # Use the schedule scraper for schedule/list pages
+                            tournaments = scrape_tournament_schedule(url, max_details=max_details, show_progress=True)
+                        else:
+                            # Auto-detect failed, try both
+                            st.info("Auto-detecting page type...")
+                            
+                            # Try focused scraper first
+                            tournaments = scrape_tournament_focused(url, max_details=max_details, show_progress=True)
+                            
+                            # If no results, try schedule scraper
+                            if not tournaments:
+                                st.info("No tournament details found, trying schedule scraper...")
+                                tournaments = scrape_tournament_schedule(url, max_details=max_details, show_progress=True)
+                        
+                        if not tournaments:
+                            st.error("No tournament data found. The website structure might not be supported.")
+                        else:
+                            # Store the data in session state
+                            st.session_state.tournaments = tournaments
+                            
+                            # Display results
+                            st.success(f"Found {len(tournaments)} tournaments and qualifying rounds")
+                            
+                            # Count qualifiers
+                            qualifier_count = sum(1 for t in tournaments if t.get('Is Qualifier'))
+                            tournaments_with_qualifiers = sum(1 for t in tournaments if t.get('Has Qualifiers'))
+                            
+                            if qualifier_count > 0:
+                                st.info(f"Including {qualifier_count} qualifying rounds for {tournaments_with_qualifiers} tournaments")
+                            
+                    except Exception as e:
+                        st.error(f"An error occurred during scraping: {str(e)}")
+                        if show_debug:
+                            st.exception(e)
+            else:
+                st.error("Please enter a valid URL")
+                
 # Function to determine tournament type based on name or description
 def determine_tournament_type(name, description=""):
     """Logic to categorize tournament type"""
