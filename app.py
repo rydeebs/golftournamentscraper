@@ -15,6 +15,10 @@ import pandas as pd
 import json
 import hashlib
 import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -55,7 +59,9 @@ def get_page_html(url, timeout=15, max_retries=3):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9', 'Connection': 'keep-alive'
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
+        'Referer': 'https://www.google.com/'  # Add a referer to look more like a real browser
     }
     retry_count = 0
     while retry_count < max_retries:
@@ -75,6 +81,25 @@ def get_page_html(url, timeout=15, max_retries=3):
                 return None
             time.sleep(1)
     return None
+
+def get_page_html_with_browser(url, timeout=15):
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    
+    try:
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        driver.set_page_load_timeout(timeout)
+        driver.get(url)
+        # Wait for JavaScript to render content
+        time.sleep(3)
+        html_content = driver.page_source
+        driver.quit()
+        return html_content
+    except Exception as e:
+        logger.error(f"Error fetching {url} with browser: {str(e)}")
+        return None
 
 def save_to_cache(key, data):
     cache_dir = ".cache"
@@ -283,20 +308,29 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
             if cd: tournament_data['Original Date'] = cd;
             if len(cd or "") > len(ci['text']) * 0.5 or len(ci['text']) < 25: used_cell_indices.add(ci['index']); break
         if not tournament_data['Original Date']:
-            for ci in cell_contents: cd = extract_clean_date_string(ci['text']);
-            if cd: tournament_data['Original Date'] = cd; break
+            for ci in cell_contents: 
+                cd = extract_clean_date_string(ci['text'])
+                if cd: 
+                    tournament_data['Original Date'] = cd
+                    break
         for ci in cell_contents:
             if ci['index'] in used_cell_indices: continue; crs = extract_golf_course(ci['text'])
             if crs: tournament_data['Course'] = crs; used_cell_indices.add(ci['index']); break
         if not tournament_data['Course']:
-            for ci in cell_contents: crs = extract_golf_course(ci['text']);
-            if crs: tournament_data['Course'] = crs; break
+            for ci in cell_contents: 
+                crs = extract_golf_course(ci['text'])
+                if crs: 
+                    tournament_data['Course'] = crs
+                    break
         for ci in cell_contents:
             if ci['index'] in used_cell_indices: continue; loc = extract_location(ci['text'])
             if loc['city'] and loc['state']: tournament_data.update(loc); used_cell_indices.add(ci['index']); break
         if not tournament_data['City']:
-            for ci in cell_contents: loc = extract_location(ci['text']);
-            if loc['city'] and loc['state']: tournament_data.update(loc); break
+            for ci in cell_contents: 
+                loc = extract_location(ci['text'])
+                if loc['city'] and loc['state']: 
+                    tournament_data.update(loc)
+                    break
         name_candidates = []
         for ci in cell_contents:
             if ci['index'] in used_cell_indices and not name_candidates: continue
@@ -437,8 +471,14 @@ def scrape_tournaments(url, max_details=None, show_progress=True):
         if show_progress: st.success(f"Loaded {len(cached_data)} tournaments from cache for {url}.")
         for item in cached_data: defaults = initialize_tournament_data();
         for key_def in defaults: item.setdefault(key_def, defaults[key_def]); return cached_data
-    html = get_page_html(url);
-    if not html: return []
+    html = get_page_html(url)
+    if not html:
+        return []
+    
+    # Debug: Save the HTML to a file to inspect
+    with open("debug_response.html", "w", encoding="utf-8") as f:
+        f.write(html)
+    
     soup = BeautifulSoup(html, 'html.parser'); tournaments = []
     if show_progress:
         progress_text = st.empty(); progress_bar = st.progress(0.0)
