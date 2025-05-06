@@ -283,29 +283,20 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
             if cd: tournament_data['Original Date'] = cd;
             if len(cd or "") > len(ci['text']) * 0.5 or len(ci['text']) < 25: used_cell_indices.add(ci['index']); break
         if not tournament_data['Original Date']:
-            for ci in cell_contents: 
-                cd = extract_clean_date_string(ci['text'])
-                if cd: 
-                    tournament_data['Original Date'] = cd
-                    break
+            for ci in cell_contents: cd = extract_clean_date_string(ci['text']);
+            if cd: tournament_data['Original Date'] = cd; break
         for ci in cell_contents:
             if ci['index'] in used_cell_indices: continue; crs = extract_golf_course(ci['text'])
             if crs: tournament_data['Course'] = crs; used_cell_indices.add(ci['index']); break
         if not tournament_data['Course']:
-            for ci in cell_contents: 
-                crs = extract_golf_course(ci['text'])
-                if crs: 
-                    tournament_data['Course'] = crs
-                    break
+            for ci in cell_contents: crs = extract_golf_course(ci['text']);
+            if crs: tournament_data['Course'] = crs; break
         for ci in cell_contents:
             if ci['index'] in used_cell_indices: continue; loc = extract_location(ci['text'])
             if loc['city'] and loc['state']: tournament_data.update(loc); used_cell_indices.add(ci['index']); break
         if not tournament_data['City']:
-            for ci in cell_contents: 
-                loc = extract_location(ci['text'])
-                if loc['city'] and loc['state']: 
-                    tournament_data.update(loc)
-                    break
+            for ci in cell_contents: loc = extract_location(ci['text']);
+            if loc['city'] and loc['state']: tournament_data.update(loc); break
         name_candidates = []
         for ci in cell_contents:
             if ci['index'] in used_cell_indices and not name_candidates: continue
@@ -332,8 +323,8 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
         tournament_data['Original Date'] = extract_clean_date_string(etxt); tournament_data['Course'] = extract_golf_course(etxt)
         loc_info = extract_location(etxt); tournament_data.update(loc_info)
         ncand = etxt; link = element.find('a', href=True); urlcand = None
-        if link: ltxt = link.get_text(strip=True);
-        if ltxt: ncand = ltxt; urlcand = construct_absolute_url(base_url, link.get('href'))
+        if link: ltxt_ = link.get_text(strip=True); # Renamed to avoid conflict
+        if ltxt_: ncand = ltxt_; urlcand = construct_absolute_url(base_url, link.get('href')) # Use renamed ltxt_
         ncand = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', ncand, flags=re.I).strip()
         ncand = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', ncand, flags=re.I).strip()
         ncand = re.sub(r'\s?\*FULL\*$', '', ncand, flags=re.I).strip()
@@ -348,35 +339,49 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
     tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
     return tournament_data
 
+# CORRECTED parse_golfgenius_detail_page
 def parse_golfgenius_detail_page(soup, url):
-    tournament_data = initialize_tournament_data(); tournament_data['Detail URL'] = url
+    tournament_data = initialize_tournament_data()
+    tournament_data['Detail URL'] = url
+
+    name_text_candidate = None # Initialize candidate
     name_tag = soup.select_one('h1.text-white, h1.custom-event-title, h1#event-title, h1.event-title, h1')
-    if name_tag: name_text = name_tag.get_text(strip=True);
-    if is_valid_tournament_name(name_text): tournament_data['Name'] = name_text
+    if name_tag:
+        name_text_candidate = name_tag.get_text(strip=True)
+    
+    if name_text_candidate and is_valid_tournament_name(name_text_candidate):
+        tournament_data['Name'] = name_text_candidate
+    
     date_elements = soup.select('.gg-event-header-date, .event-date, .portlet-event-date'); date_text_found = None
     if date_elements: date_text_found = date_elements[0].get_text(strip=True)
     else:
         all_text = soup.get_text(" ", strip=True)
         date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:(?:st|nd|rd|th)?(?:,\s*\d{4})?)?|\b\d{1,2}/\d{1,2}/\d{2,4}\b', all_text, re.I)
         if date_match: date_text_found = date_match.group(0)
+    
     if date_text_found:
         tournament_data['Original Date'] = extract_clean_date_string(date_text_found)
         tournament_data['Date'] = parse_date(tournament_data['Original Date'])
+    
     host_facility_header = soup.find(['h2','h3','strong'], string=re.compile("Host Facilit", re.I)); course_location_text = None
-    if host_facility_header: next_elem = host_facility_header.find_next_sibling();
-    if next_elem: course_location_text = next_elem.get_text(" ", strip=True)
+    if host_facility_header: 
+        next_elem = host_facility_header.find_next_sibling()
+        if next_elem: course_location_text = next_elem.get_text(" ", strip=True)
     else:
         potential_course_tags = soup.find_all(string=re.compile(r'Golf Club|Country Club|Links|National|Resort', re.I))
         if potential_course_tags:
-            for tag_ in potential_course_tags:
-                parent_block = tag_.find_parent('div', limit=3)
+            for tag_ in potential_course_tags: # Use different variable name for the loop variable
+                parent_block = tag_.find_parent('div', limit=3) # Use tag_
                 if parent_block: course_location_text = parent_block.get_text(" ", strip=True); break
         if not course_location_text: course_location_text = soup.get_text(" ", strip=True)
+    
     if course_location_text:
         tournament_data['Course'] = extract_golf_course(course_location_text)
         loc_info = extract_location(course_location_text); tournament_data.update(loc_info)
+    
     if not tournament_data['Name'] or not tournament_data['Original Date']:
         logger.warning(f"Could not extract essential Name/Date from GolfGenius detail page: {url}"); return None
+    
     tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
     return tournament_data
 
@@ -401,7 +406,7 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
     if not tournament_elements:
         logger.warning(f"No potential tournament elements found on {url} for site type {site_type} with primary selectors.")
         all_tables = soup.find_all('table')
-        for table_ in all_tables:
+        for table_ in all_tables: # Use different variable name for the loop variable
             rows = table_.find_all('tr'); rows_with_td = [row for row in rows if row.find('td')]
             if len(rows_with_td) > 0 : tournament_elements.extend(rows_with_td)
         if tournament_elements: logger.info(f"Found {len(tournament_elements)} rows by checking all tables as a last resort.")
@@ -426,7 +431,7 @@ def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progr
     return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
 
 def scrape_tournaments(url, max_details=None, show_progress=True):
-    cache_key_version = "v2.3"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
+    cache_key_version = "v2.4"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}" # Incremented cache key
     cached_data = load_from_cache(cache_key)
     if cached_data:
         if show_progress: st.success(f"Loaded {len(cached_data)} tournaments from cache for {url}.")
@@ -443,7 +448,7 @@ def scrape_tournaments(url, max_details=None, show_progress=True):
     elif site_type == 'golfgenius': tournaments = extract_golfgenius_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
     elif site_type == 'bluegolf': tournaments = extract_bluegolf_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
     else: tournaments = extract_generic_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-    if site_type == 'golfgenius' and "/pages/" in url.lower() and not tournaments:
+    if site_type == 'golfgenius' and "/pages/" in url.lower() and not tournaments: # Check if schedule parse failed for a detail page
         logger.info(f"GolfGenius URL {url} looks like a detail page and schedule parse failed. Attempting detail page parse.")
         tournament_detail = parse_golfgenius_detail_page(soup, url)
         if tournament_detail: tournaments.append(tournament_detail); logger.info(f"Successfully parsed GolfGenius detail page: {tournament_detail.get('Name')}")
