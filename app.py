@@ -465,15 +465,16 @@ def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progr
     return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
 
 def scrape_tournaments(url, max_details=None, show_progress=True):
-    cache_key_version = "v2.4"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}" # Incremented cache key
+    cache_key_version = "v2.4"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
     cached_data = load_from_cache(cache_key)
     if cached_data:
         if show_progress: st.success(f"Loaded {len(cached_data)} tournaments from cache for {url}.")
         for item in cached_data: defaults = initialize_tournament_data();
         for key_def in defaults: item.setdefault(key_def, defaults[key_def]); return cached_data
-    html = get_page_html(url)
-    if not html:
-        return []
+    
+    # Use the browser-based method instead of the simple requests method
+    html = get_page_html_with_browser(url)
+    if not html: return []
     
     # Debug: Save the HTML to a file to inspect
     with open("debug_response.html", "w", encoding="utf-8") as f:
