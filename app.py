@@ -7,7 +7,7 @@ import re
 import csv
 import io
 import base64
-from urllib.parse import urljoin # Still used, but with pre-checks
+from urllib.parse import urljoin
 import logging
 from datetime import datetime, timedelta
 import time
@@ -15,7 +15,6 @@ import pandas as pd
 import json
 import hashlib
 import os
-# from concurrent.futures import ThreadPoolExecutor, as_completed # Not used yet
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -112,30 +111,21 @@ def initialize_tournament_data():
     }
 
 def construct_absolute_url(base_url, relative_url):
-    """Safely constructs an absolute URL from a base URL and a relative URL."""
     if not relative_url: return None
     relative_url = str(relative_url).strip()
     if not base_url and not relative_url.startswith(('http://', 'https://')):
         logger.warning(f"Cannot construct absolute URL: base_url is missing and relative_url '{relative_url}' is not absolute.")
         return relative_url
-
-    if relative_url.startswith(('http://', 'https://')):
-        return relative_url
+    if relative_url.startswith(('http://', 'https://')): return relative_url
     if relative_url.startswith('//'):
-        if base_url and '://' in base_url:
-            scheme = base_url.split('://')[0]
-            return f"{scheme}:{relative_url}"
-        else:
-            return f"https:{relative_url}"
-    if relative_url.startswith(('javascript:', 'mailto:', 'tel:', '#')):
-        return None
-
+        if base_url and '://' in base_url: scheme = base_url.split('://')[0]
+        else: scheme = 'https'
+        return f"{scheme}:{relative_url}"
+    if relative_url.startswith(('javascript:', 'mailto:', 'tel:', '#')): return None
     if not base_url:
         logger.warning(f"base_url not provided for relative_url: {relative_url}. Cannot resolve.")
         return None
-
-    try:
-        return urljoin(base_url, relative_url)
+    try: return urljoin(base_url, relative_url)
     except ValueError as e:
         logger.error(f"Error joining base_url '{base_url}' with relative_url '{relative_url}': {e}")
         return None
@@ -144,15 +134,9 @@ def parse_date(date_string):
     if not date_string: return None
     date_string = str(date_string).strip()
     if date_string.lower() in ['tbd', 'tba', '']: return 'TBD'
-    date_formats = [
-        '%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y', '%Y-%m-%d',
-        '%m-%d-%Y', '%d %B %Y', '%d %b %Y',
-    ]
+    date_formats = ['%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%m-%d-%Y', '%d %B %Y', '%d %b %Y']
     if ' - ' in date_string: date_string = date_string.split(' - ')[0].strip()
-    elif re.match(r'\w+\s\d+-\d+', date_string):
-         parts = date_string.split('-')
-         date_string = parts[0].strip()
-
+    elif re.match(r'\w+\s\d+-\d+', date_string): date_string = date_string.split('-')[0].strip()
     for date_format in date_formats:
         try:
             parsed_date = datetime.strptime(date_string, date_format)
@@ -180,8 +164,7 @@ def extract_clean_date_string(text):
             date_candidate = match.group(1).strip()
             if re.match(r'^[A-Za-z]+\s+\d+$', date_candidate):
                 year_match_in_text = re.search(r'\b(20\d{2})\b', text)
-                if year_match_in_text:
-                    date_candidate += f", {year_match_in_text.group(1)}"
+                if year_match_in_text: date_candidate += f", {year_match_in_text.group(1)}"
             return date_candidate
     return None
 
@@ -191,22 +174,17 @@ def extract_location(text):
     text = str(text).strip()
     match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?', text)
     if match:
-        location_info['city'] = match.group(1).strip().rstrip(',.')
-        location_info['state'] = match.group(2).strip()
-        location_info['zip'] = match.group(3).strip() if match.group(3) else None
-        return location_info
+        location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = match.group(2).strip()
+        location_info['zip'] = match.group(3).strip() if match.group(3) else None; return location_info
     match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Za-z]{3,})\s*(\d{5}(?:-\d{4})?)?', text)
     if match:
-        potential_state_name = match.group(2).strip()
-        if len(potential_state_name) > 2 or (len(potential_state_name) == 2 and potential_state_name.isupper()):
-             location_info['city'] = match.group(1).strip().rstrip(',.')
-             location_info['state'] = potential_state_name
-             location_info['zip'] = match.group(3).strip() if match.group(3) else None
-             return location_info
+        psn = match.group(2).strip()
+        if len(psn) > 2 or (len(psn) == 2 and psn.isupper()):
+             location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = psn
+             location_info['zip'] = match.group(3).strip() if match.group(3) else None; return location_info
     match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Z]{2})\b', text)
     if match:
-        location_info['city'] = match.group(1).strip().rstrip(',.')
-        location_info['state'] = match.group(2).strip()
+        location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = match.group(2).strip()
         return location_info
     return location_info
 
@@ -224,33 +202,28 @@ def extract_golf_course(text):
             candidate = match_obj.group(1).strip()
             if ',' not in candidate and len(candidate) > 3 and not candidate.lower().endswith((" (east)", " (west)", " (north)", " (south)")):
                 if not re.fullmatch(r'[A-Za-z]{2,}', candidate) or any(kw in candidate.lower() for kw in ["golf", "club", "course", "links", "country", "resort", "national", "center"]):
-                    if best_match_str is None or len(candidate) > len(best_match_str):
-                        best_match_str = candidate
+                    if best_match_str is None or len(candidate) > len(best_match_str): best_match_str = candidate
     if best_match_str:
-        best_match_str = re.sub(r'[\s,.-]+$', '', best_match_str)
-        best_match_str = re.sub(r'^\d{4}\s+', '', best_match_str).strip()
+        best_match_str = re.sub(r'[\s,.-]+$', '', best_match_str); best_match_str = re.sub(r'^\d{4}\s+', '', best_match_str).strip()
         loc_check = extract_location(best_match_str)
-        if loc_check['city'] and loc_check['state'] and loc_check['city'].lower() == best_match_str.lower().split(',')[0].strip().lower():
-            return None
+        if loc_check['city'] and loc_check['state'] and loc_check['city'].lower() == best_match_str.lower().split(',')[0].strip().lower(): return None
         return best_match_str
     return None
 
 def is_valid_tournament_name(name_text, course_name=None, city_name=None, state_name=None):
-    if not name_text or len(name_text.strip()) < 3: return False
-    name_lower = name_text.lower().strip()
+    if not name_text: return False
+    name_text_stripped = str(name_text).strip()
+    if len(name_text_stripped) < 3: return False
+    name_lower = name_text_stripped.lower()
     NON_TOURNAMENT_KEYWORDS = [
-        "create an account", "printable schedules", "log in", "about us", "contact us",
-        "view leaderboard", "leaderboard", "results", "tee times", "rankings", "standings",
-        "store", "information", "details", "rules", "policies", "format", "golf genius",
-        "registration", "sign up", "membership", "home", "schedule", "news", "bluegolf",
-        "photos", "videos", "sponsors", "directions", "map", "faq", "archive", "fsga",
-        "click here", "read more", "learn more", "welcome", "important notice", "usga",
-        "please wait", "past events", "upcoming events", "all events", "event calendar",
-        "my account", "profile", "settings", "dashboard", "manage account", "pga",
-        "course handicap", "handicap index", "course rating", "slope rating", "lpga",
-        "weather", "forecast", "terms of use", "privacy policy", "site map",
-        "powered by", "official website", "enter a tournament", "show all", "advanced search",
-        "post a score", "tee time reservation", "book now", "add to cart",
+        "create an account", "printable schedules", "log in", "about us", "contact us", "view leaderboard", "leaderboard", "results",
+        "tee times", "rankings", "standings", "store", "information", "details", "rules", "policies", "format", "golf genius",
+        "registration", "sign up", "membership", "home", "schedule", "news", "bluegolf", "photos", "videos", "sponsors",
+        "directions", "map", "faq", "archive", "fsga", "click here", "read more", "learn more", "welcome", "important notice",
+        "usga", "please wait", "past events", "upcoming events", "all events", "event calendar", "my account", "profile",
+        "settings", "dashboard", "manage account", "pga", "course handicap", "handicap index", "course rating", "slope rating",
+        "lpga", "weather", "forecast", "terms of use", "privacy policy", "site map", "powered by", "official website",
+        "enter a tournament", "show all", "advanced search", "post a score", "tee time reservation", "book now", "add to cart",
         "select a page", "no events found", "tournament portal", "tournament central",
     ]
     for keyword in NON_TOURNAMENT_KEYWORDS:
@@ -259,18 +232,16 @@ def is_valid_tournament_name(name_text, course_name=None, city_name=None, state_
             return False
     strong_tournament_indicators = ["championship", "open", "classic", "invitational", "cup", "trophy", "tour", "event", "qualifier", "challenge", "series", "foursomes", "scramble", "inv"]
     has_strong_indicator = any(indicator in name_lower for indicator in strong_tournament_indicators)
-
     if course_name and name_lower == course_name.lower() and not has_strong_indicator: return False
     if city_name and name_lower == city_name.lower() and not has_strong_indicator: return False
     if state_name and name_lower == state_name.lower() and not has_strong_indicator: return False
-        
-    if re.fullmatch(r'\d{1,2}/\d{1,2}/\d{2,4}', name_text) or \
+    if re.fullmatch(r'\d{1,2}/\d{1,2}/\d{2,4}', name_text_stripped) or \
        re.fullmatch(r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{1,2}(?:,\s*\d{4})?', name_lower) : return False
     if not has_strong_indicator and (name_lower.endswith(" gc") or name_lower.endswith(" cc") or name_lower.endswith(" golf club") or name_lower.endswith(" country club")):
         if course_name and name_lower in course_name.lower(): return False
     if name_lower in ["events", "tournaments", "schedule of events", "tournament schedule"]: return False
-    if re.fullmatch(r'\d{4}', name_text): return False
-    if re.fullmatch(r'\d+', name_text) or (len(name_text.split()) == 1 and len(name_text) < 5 and not has_strong_indicator): return False
+    if re.fullmatch(r'\d{4}', name_text_stripped): return False
+    if re.fullmatch(r'\d+', name_text_stripped) or (len(name_text_stripped.split()) == 1 and len(name_text_stripped) < 5 and not has_strong_indicator): return False
     return True
 
 def generate_tournament_id(tournament_data):
@@ -283,17 +254,13 @@ def is_qualifier_tournament(name):
     if not name: return False; name_lower = str(name).lower()
     return any(keyword in name_lower for keyword in ['qualifier', 'qualifying', 'q-school', 'local qualifying', 'sectional qualifying'])
 
-# CORRECTED detect_site_type
 def detect_site_type(url, html=None):
-    if not url:
-        return 'generic'
-    url_lower = url.lower() # Assign url_lower here
-
+    if not url: return 'generic'
+    url_lower = url.lower()
     if 'fsga.org' in url_lower: return 'fsga'
     if 'golfgenius.com' in url_lower: return 'golfgenius'
     if 'bluegolf.com' in url_lower: return 'bluegolf'
     if 'amateurgolf.com' in url_lower: return 'amateurgolf'
-    
     if html:
         html_lower = html.lower()
         if re.search(r'florida state golf association|fsga', html_lower): return 'fsga'
@@ -303,116 +270,113 @@ def detect_site_type(url, html=None):
     return 'generic'
 
 def parse_generic_tournament_item(element, base_url, site_type='generic'):
-    tournament_data = initialize_tournament_data()
-    used_cell_indices = set()
-
+    tournament_data = initialize_tournament_data(); used_cell_indices = set()
     if element.name == 'tr':
-        cells = element.find_all(['td', 'th'], recursive=False)
+        cells = element.find_all(['td', 'th'], recursive=False);
         if len(cells) < 1: return None
-
-        cell_contents = []
-        for idx, cell_tag in enumerate(cells):
-            text = cell_tag.get_text(separator=' ', strip=True)
-            link_tag = cell_tag.find('a', href=True)
-            cell_contents.append({
-                'index': idx, 'text': text, 'tag': cell_tag,
-                'link_url': link_tag['href'] if link_tag else None,
-                'link_text': link_tag.get_text(strip=True) if link_tag else None
-            })
-        
-        for cell_info in cell_contents:
-            if cell_info['index'] in used_cell_indices: continue
-            clean_date = extract_clean_date_string(cell_info['text'])
-            if clean_date:
-                tournament_data['Original Date'] = clean_date
-                if len(clean_date) > len(cell_info['text']) * 0.5 or len(cell_info['text']) < 25:
-                    used_cell_indices.add(cell_info['index'])
-                break 
+        cell_contents = [{'index': idx, 'text': ct.get_text(separator=' ', strip=True), 'tag': ct,
+                          'link_url': lt['href'] if (lt := ct.find('a', href=True)) else None,
+                          'link_text': lt.get_text(strip=True) if lt else None} for idx, ct in enumerate(cells)]
+        for ci in cell_contents:
+            if ci['index'] in used_cell_indices: continue
+            cd = extract_clean_date_string(ci['text'])
+            if cd: tournament_data['Original Date'] = cd;
+            if len(cd or "") > len(ci['text']) * 0.5 or len(ci['text']) < 25: used_cell_indices.add(ci['index']); break
         if not tournament_data['Original Date']:
-            for cell_info in cell_contents:
-                clean_date = extract_clean_date_string(cell_info['text'])
-                if clean_date: tournament_data['Original Date'] = clean_date; break
-        
-        for cell_info in cell_contents:
-            if cell_info['index'] in used_cell_indices: continue
-            course = extract_golf_course(cell_info['text'])
-            if course:
-                tournament_data['Course'] = course
-                used_cell_indices.add(cell_info['index']); break
+            for ci in cell_contents: 
+                cd = extract_clean_date_string(ci['text'])
+                if cd: 
+                    tournament_data['Original Date'] = cd
+                    break
+        for ci in cell_contents:
+            if ci['index'] in used_cell_indices: continue; crs = extract_golf_course(ci['text'])
+            if crs: tournament_data['Course'] = crs; used_cell_indices.add(ci['index']); break
         if not tournament_data['Course']:
-            for cell_info in cell_contents:
-                course = extract_golf_course(cell_info['text'])
-                if course: tournament_data['Course'] = course; break
-
-        for cell_info in cell_contents:
-            if cell_info['index'] in used_cell_indices: continue
-            loc = extract_location(cell_info['text'])
-            if loc['city'] and loc['state']:
-                tournament_data.update(loc)
-                used_cell_indices.add(cell_info['index']); break
+            for ci in cell_contents: 
+                crs = extract_golf_course(ci['text'])
+                if crs: 
+                    tournament_data['Course'] = crs
+                    break
+        for ci in cell_contents:
+            if ci['index'] in used_cell_indices: continue; loc = extract_location(ci['text'])
+            if loc['city'] and loc['state']: tournament_data.update(loc); used_cell_indices.add(ci['index']); break
         if not tournament_data['City']:
-            for cell_info in cell_contents:
-                loc = extract_location(cell_info['text'])
-                if loc['city'] and loc['state']: tournament_data.update(loc); break
-        
-        name_candidates_list = []
-        for cell_info in cell_contents:
-            if cell_info['index'] in used_cell_indices and not name_candidates_list: continue
-
-            text_for_name = cell_info['link_text'] if cell_info['link_text'] else cell_info['text']
-            text_for_name = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', text_for_name, flags=re.I).strip()
-            text_for_name = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', text_for_name, flags=re.I).strip()
-            text_for_name = re.sub(r'\s?\*FULL\*$', '', text_for_name, flags=re.I).strip()
-            
-            if is_valid_tournament_name(text_for_name, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-                abs_url = construct_absolute_url(base_url, cell_info['link_url'])
-                score = len(text_for_name)
-                if abs_url: score += 20
-                if tournament_data['Course'] and tournament_data['Course'].lower() in text_for_name.lower(): score -=10
-                name_candidates_list.append({'name': text_for_name, 'url': abs_url, 'score': score})
-        
-        if name_candidates_list:
-            name_candidates_list.sort(key=lambda x: x['score'], reverse=True)
-            tournament_data['Name'] = name_candidates_list[0]['name']
-            tournament_data['Detail URL'] = name_candidates_list[0]['url']
+            for ci in cell_contents: 
+                loc = extract_location(ci['text'])
+                if loc['city'] and loc['state']: 
+                    tournament_data.update(loc)
+                    break
+        name_candidates = []
+        for ci in cell_contents:
+            if ci['index'] in used_cell_indices and not name_candidates: continue
+            tfn = ci['link_text'] if ci['link_text'] else ci['text']
+            tfn = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', tfn, flags=re.I).strip()
+            tfn = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', tfn, flags=re.I).strip()
+            tfn = re.sub(r'\s?\*FULL\*$', '', tfn, flags=re.I).strip()
+            if is_valid_tournament_name(tfn, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
+                au = construct_absolute_url(base_url, ci['link_url']); score = len(tfn) + (20 if au else 0)
+                if tournament_data['Course'] and tournament_data['Course'].lower() in tfn.lower(): score -=10
+                name_candidates.append({'name': tfn, 'url': au, 'score': score})
+        if name_candidates:
+            name_candidates.sort(key=lambda x: x['score'], reverse=True)
+            tournament_data['Name'] = name_candidates[0]['name']; tournament_data['Detail URL'] = name_candidates[0]['url']
         else:
-            longest_text = ""
-            for cell_info in cell_contents:
-                if cell_info['index'] not in used_cell_indices and len(cell_info['text']) > len(longest_text):
-                    if is_valid_tournament_name(cell_info['text'], tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-                        longest_text = cell_info['text']
-                        tournament_data['Detail URL'] = construct_absolute_url(base_url, cell_info['link_url'])
-            if longest_text: tournament_data['Name'] = longest_text
+            ltxt = "";
+            for ci in cell_contents:
+                if ci['index'] not in used_cell_indices and len(ci['text']) > len(ltxt):
+                    if is_valid_tournament_name(ci['text'],tournament_data['Course'],tournament_data['City'],tournament_data['State']):
+                        ltxt = ci['text']; tournament_data['Detail URL'] = construct_absolute_url(base_url, ci['link_url'])
+            if ltxt: tournament_data['Name'] = ltxt
     else:
-        element_text = element.get_text(separator=' ', strip=True)
-        tournament_data['Original Date'] = extract_clean_date_string(element_text)
-        tournament_data['Course'] = extract_golf_course(element_text)
-        loc_info = extract_location(element_text); tournament_data.update(loc_info)
-        
-        name_candidate = element_text
-        link = element.find('a', href=True)
-        url_candidate = None
-        if link:
-            link_text = link.get_text(strip=True)
-            if link_text: name_candidate = link_text
-            url_candidate = construct_absolute_url(base_url, link.get('href'))
-
-        name_candidate = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', name_candidate, flags=re.I).strip()
-        name_candidate = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', name_candidate, flags=re.I).strip()
-        name_candidate = re.sub(r'\s?\*FULL\*$', '', name_candidate, flags=re.I).strip()
-
-        if is_valid_tournament_name(name_candidate, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-            tournament_data['Name'] = name_candidate
-            tournament_data['Detail URL'] = url_candidate
-        elif is_valid_tournament_name(element_text, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-             tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', element_text, flags=re.I).strip()
-             tournament_data['Detail URL'] = url_candidate
-
-    if not tournament_data['Name'] or not tournament_data['Original Date']:
-        return None
+        etxt = element.get_text(separator=' ', strip=True)
+        tournament_data['Original Date'] = extract_clean_date_string(etxt); tournament_data['Course'] = extract_golf_course(etxt)
+        loc_info = extract_location(etxt); tournament_data.update(loc_info)
+        ncand = etxt; link = element.find('a', href=True); urlcand = None
+        if link: ltxt = link.get_text(strip=True);
+        if ltxt: ncand = ltxt; urlcand = construct_absolute_url(base_url, link.get('href'))
+        ncand = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', ncand, flags=re.I).strip()
+        ncand = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', ncand, flags=re.I).strip()
+        ncand = re.sub(r'\s?\*FULL\*$', '', ncand, flags=re.I).strip()
+        if is_valid_tournament_name(ncand, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
+            tournament_data['Name'] = ncand; tournament_data['Detail URL'] = urlcand
+        elif is_valid_tournament_name(etxt, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
+             tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', etxt, flags=re.I).strip(); tournament_data['Detail URL'] = urlcand
+    if not tournament_data['Name'] or not tournament_data['Original Date']: return None
     tournament_data['Date'] = parse_date(tournament_data['Original Date'])
     tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Name'])
     if tournament_data['Is Qualifier']: tournament_data['Tournament Type'] = 'Qualifying Round'
+    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+    return tournament_data
+
+def parse_golfgenius_detail_page(soup, url):
+    tournament_data = initialize_tournament_data(); tournament_data['Detail URL'] = url
+    name_tag = soup.select_one('h1.text-white, h1.custom-event-title, h1#event-title, h1.event-title, h1')
+    if name_tag: name_text = name_tag.get_text(strip=True);
+    if is_valid_tournament_name(name_text): tournament_data['Name'] = name_text
+    date_elements = soup.select('.gg-event-header-date, .event-date, .portlet-event-date'); date_text_found = None
+    if date_elements: date_text_found = date_elements[0].get_text(strip=True)
+    else:
+        all_text = soup.get_text(" ", strip=True)
+        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:(?:st|nd|rd|th)?(?:,\s*\d{4})?)?|\b\d{1,2}/\d{1,2}/\d{2,4}\b', all_text, re.I)
+        if date_match: date_text_found = date_match.group(0)
+    if date_text_found:
+        tournament_data['Original Date'] = extract_clean_date_string(date_text_found)
+        tournament_data['Date'] = parse_date(tournament_data['Original Date'])
+    host_facility_header = soup.find(['h2','h3','strong'], string=re.compile("Host Facilit", re.I)); course_location_text = None
+    if host_facility_header: next_elem = host_facility_header.find_next_sibling();
+    if next_elem: course_location_text = next_elem.get_text(" ", strip=True)
+    else:
+        potential_course_tags = soup.find_all(string=re.compile(r'Golf Club|Country Club|Links|National|Resort', re.I))
+        if potential_course_tags:
+            for tag_ in potential_course_tags:
+                parent_block = tag_.find_parent('div', limit=3)
+                if parent_block: course_location_text = parent_block.get_text(" ", strip=True); break
+        if not course_location_text: course_location_text = soup.get_text(" ", strip=True)
+    if course_location_text:
+        tournament_data['Course'] = extract_golf_course(course_location_text)
+        loc_info = extract_location(course_location_text); tournament_data.update(loc_info)
+    if not tournament_data['Name'] or not tournament_data['Original Date']:
+        logger.warning(f"Could not extract essential Name/Date from GolfGenius detail page: {url}"); return None
     tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
     return tournament_data
 
@@ -422,7 +386,6 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
     elif site_type == 'bluegolf': selectors = ['table.scheduleCondensed tr', 'tr.tournamentItem', 'div.eventItem', 'table tr']
     elif site_type == 'fsga': selectors = ['div.tournament-list-item', 'table.dataTable tbody tr', 'div.card.tournament-card', 'table tr']
     else: selectors = ['table tr', 'li.event', 'div.event', 'div.item', 'article.event', 'div.tournament-item']
-
     for selector in selectors:
         elements = soup.select(selector)
         if "tr" in selector: elements = [el for el in elements if el.find('td')]
@@ -434,18 +397,14 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
         for selector in secondary_selectors:
             elements = soup.select(selector)
             elements = [el for el in elements if len(el.get_text(strip=True)) > 30 and el.find('a')]
-            if elements:
-                tournament_elements.extend(elements)
-                logger.info(f"Site {site_type}: Found {len(elements)} elements with fallback selector '{selector}' for {url}")
+            if elements: tournament_elements.extend(elements); logger.info(f"Site {site_type}: Found {len(elements)} elements with fallback selector '{selector}' for {url}")
     if not tournament_elements:
         logger.warning(f"No potential tournament elements found on {url} for site type {site_type} with primary selectors.")
         all_tables = soup.find_all('table')
-        for table in all_tables:
-            rows = table.find_all('tr')
-            rows_with_td = [row for row in rows if row.find('td')]
+        for table_ in all_tables:
+            rows = table_.find_all('tr'); rows_with_td = [row for row in rows if row.find('td')]
             if len(rows_with_td) > 0 : tournament_elements.extend(rows_with_td)
         if tournament_elements: logger.info(f"Found {len(tournament_elements)} rows by checking all tables as a last resort.")
-
     total_elements = len(tournament_elements)
     for i, element in enumerate(tournament_elements):
         if show_progress and progress_bar and total_elements > 0:
@@ -453,8 +412,7 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
             if progress_text: progress_text.text(f"Processing {site_type} item {i+1} of {total_elements}...")
         tournament = parse_generic_tournament_item(element, url, site_type=site_type)
         if tournament and tournament['Tournament ID'] not in processed_ids:
-            tournaments.append(tournament)
-            processed_ids.add(tournament['Tournament ID'])
+            tournaments.append(tournament); processed_ids.add(tournament['Tournament ID'])
     logger.info(f"Extracted {len(tournaments)} unique tournaments from {site_type} schedule at {url}.")
     return tournaments
 
@@ -468,41 +426,32 @@ def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progr
     return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
 
 def scrape_tournaments(url, max_details=None, show_progress=True):
-    cache_key_version = "v2.2" # Incremented cache key for this fix
-    cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
+    cache_key_version = "v2.3"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
     cached_data = load_from_cache(cache_key)
     if cached_data:
         if show_progress: st.success(f"Loaded {len(cached_data)} tournaments from cache for {url}.")
-        for item in cached_data:
-            defaults = initialize_tournament_data()
-            for key_def in defaults: item.setdefault(key_def, defaults[key_def])
-        return cached_data
-
-    html = get_page_html(url)
+        for item in cached_data: defaults = initialize_tournament_data();
+        for key_def in defaults: item.setdefault(key_def, defaults[key_def]); return cached_data
+    html = get_page_html(url);
     if not html: return []
-    soup = BeautifulSoup(html, 'html.parser')
-    tournaments = []
-
+    soup = BeautifulSoup(html, 'html.parser'); tournaments = []
     if show_progress:
         progress_text = st.empty(); progress_bar = st.progress(0.0)
         progress_text.text(f"Analyzing page and finding tournaments from {url}...")
-
-    site_type = detect_site_type(url, html) # url is guaranteed to be non-empty here
-    logger.info(f"Detected site type: {site_type} for URL: {url}")
-
+    site_type = detect_site_type(url, html); logger.info(f"Detected site type: {site_type} for URL: {url}")
     if site_type == 'fsga': tournaments = extract_fsga_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
     elif site_type == 'golfgenius': tournaments = extract_golfgenius_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
     elif site_type == 'bluegolf': tournaments = extract_bluegolf_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
     else: tournaments = extract_generic_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-
+    if site_type == 'golfgenius' and "/pages/" in url.lower() and not tournaments:
+        logger.info(f"GolfGenius URL {url} looks like a detail page and schedule parse failed. Attempting detail page parse.")
+        tournament_detail = parse_golfgenius_detail_page(soup, url)
+        if tournament_detail: tournaments.append(tournament_detail); logger.info(f"Successfully parsed GolfGenius detail page: {tournament_detail.get('Name')}")
     if tournaments:
-        for item in tournaments:
-            defaults = initialize_tournament_data()
-            for key_def in defaults: item.setdefault(key_def, defaults[key_def])
-        save_to_cache(cache_key, tournaments)
+        for item in tournaments: defaults = initialize_tournament_data();
+        for key_def in defaults: item.setdefault(key_def, defaults[key_def]); save_to_cache(cache_key, tournaments)
     if show_progress:
-        progress_bar.progress(1.0)
-        progress_text.text(f"Found {len(tournaments)} valid tournament entries from {url}.")
+        progress_bar.progress(1.0); progress_text.text(f"Found {len(tournaments)} valid tournament entries from {url}.")
     return tournaments
 
 # --- Streamlit UI ---
