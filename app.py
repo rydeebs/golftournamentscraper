@@ -117,32 +117,28 @@ def construct_absolute_url(base_url, relative_url):
     relative_url = str(relative_url).strip()
     if not base_url and not relative_url.startswith(('http://', 'https://')):
         logger.warning(f"Cannot construct absolute URL: base_url is missing and relative_url '{relative_url}' is not absolute.")
-        return relative_url # Return as is, might be an error or a fragment
+        return relative_url
 
-    # If relative_url is already absolute
     if relative_url.startswith(('http://', 'https://')):
         return relative_url
-    # Handle protocol-relative URLs (e.g., //example.com/path)
     if relative_url.startswith('//'):
         if base_url and '://' in base_url:
             scheme = base_url.split('://')[0]
             return f"{scheme}:{relative_url}"
-        else: # Default to https if base_url scheme is unknown
+        else:
             return f"https:{relative_url}"
-    # Ignore javascript, mailto, tel, anchor links meant for same page
     if relative_url.startswith(('javascript:', 'mailto:', 'tel:', '#')):
-        return None # Or return base_url + relative_url if # is for same page navigation
+        return None
 
-    # If base_url is not provided but relative_url is just a path (should not happen ideally)
     if not base_url:
         logger.warning(f"base_url not provided for relative_url: {relative_url}. Cannot resolve.")
-        return None # Cannot resolve without a base
+        return None
 
     try:
         return urljoin(base_url, relative_url)
     except ValueError as e:
         logger.error(f"Error joining base_url '{base_url}' with relative_url '{relative_url}': {e}")
-        return None # Or return relative_url to indicate failure
+        return None
 
 def parse_date(date_string):
     if not date_string: return None
@@ -152,12 +148,10 @@ def parse_date(date_string):
         '%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y', '%Y-%m-%d',
         '%m-%d-%Y', '%d %B %Y', '%d %b %Y',
     ]
-    # Simpler range handling: try to parse the start if obvious
     if ' - ' in date_string: date_string = date_string.split(' - ')[0].strip()
-    elif re.match(r'\w+\s\d+-\d+', date_string): # "May 19-21"
+    elif re.match(r'\w+\s\d+-\d+', date_string):
          parts = date_string.split('-')
          date_string = parts[0].strip()
-         # if year is missing and present later in original string, it should be caught by extract_clean_date_string
 
     for date_format in date_formats:
         try:
@@ -184,9 +178,8 @@ def extract_clean_date_string(text):
         match = re.search(pattern, text, re.I)
         if match:
             date_candidate = match.group(1).strip()
-            # If "Month Day" format without year, try to find a year in the original text
             if re.match(r'^[A-Za-z]+\s+\d+$', date_candidate):
-                year_match_in_text = re.search(r'\b(20\d{2})\b', text) # Look for a 4-digit year
+                year_match_in_text = re.search(r'\b(20\d{2})\b', text)
                 if year_match_in_text:
                     date_candidate += f", {year_match_in_text.group(1)}"
             return date_candidate
@@ -235,11 +228,10 @@ def extract_golf_course(text):
                         best_match_str = candidate
     if best_match_str:
         best_match_str = re.sub(r'[\s,.-]+$', '', best_match_str)
-        best_match_str = re.sub(r'^\d{4}\s+', '', best_match_str).strip() # Remove leading year "2025 Course"
-        # Avoid returning just city or state if it accidentally matched course keywords
+        best_match_str = re.sub(r'^\d{4}\s+', '', best_match_str).strip()
         loc_check = extract_location(best_match_str)
         if loc_check['city'] and loc_check['state'] and loc_check['city'].lower() == best_match_str.lower().split(',')[0].strip().lower():
-            return None # It's likely just a location string
+            return None
         return best_match_str
     return None
 
@@ -278,7 +270,6 @@ def is_valid_tournament_name(name_text, course_name=None, city_name=None, state_
         if course_name and name_lower in course_name.lower(): return False
     if name_lower in ["events", "tournaments", "schedule of events", "tournament schedule"]: return False
     if re.fullmatch(r'\d{4}', name_text): return False
-    # Filter out if name is just a number or very short non-descriptive text
     if re.fullmatch(r'\d+', name_text) or (len(name_text.split()) == 1 and len(name_text) < 5 and not has_strong_indicator): return False
     return True
 
@@ -292,12 +283,17 @@ def is_qualifier_tournament(name):
     if not name: return False; name_lower = str(name).lower()
     return any(keyword in name_lower for keyword in ['qualifier', 'qualifying', 'q-school', 'local qualifying', 'sectional qualifying'])
 
+# CORRECTED detect_site_type
 def detect_site_type(url, html=None):
-    if not url: return 'generic'; url_lower = url.lower()
+    if not url:
+        return 'generic'
+    url_lower = url.lower() # Assign url_lower here
+
     if 'fsga.org' in url_lower: return 'fsga'
-    if 'golfgenius.com' in url_lower: return 'golfgenius' # Check .com
-    if 'bluegolf.com' in url_lower: return 'bluegolf'   # Check .com
+    if 'golfgenius.com' in url_lower: return 'golfgenius'
+    if 'bluegolf.com' in url_lower: return 'bluegolf'
     if 'amateurgolf.com' in url_lower: return 'amateurgolf'
+    
     if html:
         html_lower = html.lower()
         if re.search(r'florida state golf association|fsga', html_lower): return 'fsga'
@@ -308,11 +304,11 @@ def detect_site_type(url, html=None):
 
 def parse_generic_tournament_item(element, base_url, site_type='generic'):
     tournament_data = initialize_tournament_data()
-    used_cell_indices = set() # To track which cells provided primary data
+    used_cell_indices = set()
 
-    if element.name == 'tr': # Prioritize table rows
-        cells = element.find_all(['td', 'th'], recursive=False) # Non-recursive to get direct children
-        if len(cells) < 1: return None # Need at least one cell
+    if element.name == 'tr':
+        cells = element.find_all(['td', 'th'], recursive=False)
+        if len(cells) < 1: return None
 
         cell_contents = []
         for idx, cell_tag in enumerate(cells):
@@ -324,61 +320,52 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
                 'link_text': link_tag.get_text(strip=True) if link_tag else None
             })
         
-        # 1. Extract Date
         for cell_info in cell_contents:
             if cell_info['index'] in used_cell_indices: continue
             clean_date = extract_clean_date_string(cell_info['text'])
             if clean_date:
                 tournament_data['Original Date'] = clean_date
-                # If cell is mostly date, mark as used for primary data
                 if len(clean_date) > len(cell_info['text']) * 0.5 or len(cell_info['text']) < 25:
                     used_cell_indices.add(cell_info['index'])
                 break 
-        # Fallback if no dedicated date cell found
         if not tournament_data['Original Date']:
             for cell_info in cell_contents:
                 clean_date = extract_clean_date_string(cell_info['text'])
-                if clean_date:
-                    tournament_data['Original Date'] = clean_date; break
+                if clean_date: tournament_data['Original Date'] = clean_date; break
         
-        # 2. Extract Course
         for cell_info in cell_contents:
             if cell_info['index'] in used_cell_indices: continue
             course = extract_golf_course(cell_info['text'])
             if course:
                 tournament_data['Course'] = course
                 used_cell_indices.add(cell_info['index']); break
-        if not tournament_data['Course']: # Fallback
+        if not tournament_data['Course']:
             for cell_info in cell_contents:
                 course = extract_golf_course(cell_info['text'])
                 if course: tournament_data['Course'] = course; break
 
-        # 3. Extract Location
         for cell_info in cell_contents:
             if cell_info['index'] in used_cell_indices: continue
             loc = extract_location(cell_info['text'])
             if loc['city'] and loc['state']:
                 tournament_data.update(loc)
                 used_cell_indices.add(cell_info['index']); break
-        if not tournament_data['City']: # Fallback
+        if not tournament_data['City']:
             for cell_info in cell_contents:
                 loc = extract_location(cell_info['text'])
                 if loc['city'] and loc['state']: tournament_data.update(loc); break
         
-        # 4. Extract Name and Detail URL
         name_candidates_list = []
         for cell_info in cell_contents:
-            if cell_info['index'] in used_cell_indices and not name_candidates_list: continue # Only consider used cells for name if no other options
+            if cell_info['index'] in used_cell_indices and not name_candidates_list: continue
 
             text_for_name = cell_info['link_text'] if cell_info['link_text'] else cell_info['text']
-            # Clean common non-name parts
             text_for_name = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', text_for_name, flags=re.I).strip()
             text_for_name = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', text_for_name, flags=re.I).strip()
             text_for_name = re.sub(r'\s?\*FULL\*$', '', text_for_name, flags=re.I).strip()
             
             if is_valid_tournament_name(text_for_name, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
                 abs_url = construct_absolute_url(base_url, cell_info['link_url'])
-                # Score candidate: prefer links, longer names, and not matching course/location too closely
                 score = len(text_for_name)
                 if abs_url: score += 20
                 if tournament_data['Course'] and tournament_data['Course'].lower() in text_for_name.lower(): score -=10
@@ -388,7 +375,7 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
             name_candidates_list.sort(key=lambda x: x['score'], reverse=True)
             tournament_data['Name'] = name_candidates_list[0]['name']
             tournament_data['Detail URL'] = name_candidates_list[0]['url']
-        else: # Last attempt: find longest text in a non-used cell
+        else:
             longest_text = ""
             for cell_info in cell_contents:
                 if cell_info['index'] not in used_cell_indices and len(cell_info['text']) > len(longest_text):
@@ -396,9 +383,7 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
                         longest_text = cell_info['text']
                         tournament_data['Detail URL'] = construct_absolute_url(base_url, cell_info['link_url'])
             if longest_text: tournament_data['Name'] = longest_text
-
-
-    else: # Non-table row elements (div, li, etc.)
+    else:
         element_text = element.get_text(separator=' ', strip=True)
         tournament_data['Original Date'] = extract_clean_date_string(element_text)
         tournament_data['Course'] = extract_golf_course(element_text)
@@ -419,10 +404,9 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
         if is_valid_tournament_name(name_candidate, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
             tournament_data['Name'] = name_candidate
             tournament_data['Detail URL'] = url_candidate
-        # Fallback: try element_text if link text was invalid but element_text is
         elif is_valid_tournament_name(element_text, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-             tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', element_text, flags=re.I).strip() # Clean full here too
-             tournament_data['Detail URL'] = url_candidate # Keep url from link if present
+             tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', element_text, flags=re.I).strip()
+             tournament_data['Detail URL'] = url_candidate
 
     if not tournament_data['Name'] or not tournament_data['Original Date']:
         return None
@@ -434,7 +418,6 @@ def parse_generic_tournament_item(element, base_url, site_type='generic'):
 
 def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_progress, progress_bar, progress_text):
     tournaments = []; processed_ids = set(); tournament_elements = []
-    # Site-specific selectors can be refined here
     if site_type == 'golfgenius': selectors = ['table.search-results-table tr','div.event-list-item', 'div.list-group-item', 'table tr']
     elif site_type == 'bluegolf': selectors = ['table.scheduleCondensed tr', 'tr.tournamentItem', 'div.eventItem', 'table tr']
     elif site_type == 'fsga': selectors = ['div.tournament-list-item', 'table.dataTable tbody tr', 'div.card.tournament-card', 'table tr']
@@ -446,9 +429,6 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
         if elements:
             tournament_elements.extend(elements)
             logger.info(f"Site {site_type}: Found {len(elements)} elements with selector '{selector}' for {url}")
-            # For specific sites, sometimes the first good selector is enough, but let's allow multiple for more coverage
-            # if site_type != 'generic' and len(tournament_elements) > 5 : break # Heuristic to stop if enough found
-
     if not tournament_elements and site_type == 'generic':
         secondary_selectors = ['li', 'div.row', 'div.card']
         for selector in secondary_selectors:
@@ -457,26 +437,20 @@ def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_pr
             if elements:
                 tournament_elements.extend(elements)
                 logger.info(f"Site {site_type}: Found {len(elements)} elements with fallback selector '{selector}' for {url}")
-    
     if not tournament_elements:
         logger.warning(f"No potential tournament elements found on {url} for site type {site_type} with primary selectors.")
-        # Fallback to finding any row in any table if no specific selectors worked
         all_tables = soup.find_all('table')
         for table in all_tables:
             rows = table.find_all('tr')
             rows_with_td = [row for row in rows if row.find('td')]
-            if len(rows_with_td) > 0 : # Check if table has data rows
-                 tournament_elements.extend(rows_with_td)
+            if len(rows_with_td) > 0 : tournament_elements.extend(rows_with_td)
         if tournament_elements: logger.info(f"Found {len(tournament_elements)} rows by checking all tables as a last resort.")
-
 
     total_elements = len(tournament_elements)
     for i, element in enumerate(tournament_elements):
         if show_progress and progress_bar and total_elements > 0:
             progress_bar.progress((i + 1) / total_elements)
             if progress_text: progress_text.text(f"Processing {site_type} item {i+1} of {total_elements}...")
-        
-        # Pass the current page's URL as base_url
         tournament = parse_generic_tournament_item(element, url, site_type=site_type)
         if tournament and tournament['Tournament ID'] not in processed_ids:
             tournaments.append(tournament)
@@ -494,8 +468,7 @@ def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progr
     return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
 
 def scrape_tournaments(url, max_details=None, show_progress=True):
-    # Use a versioned cache key if you change parsing logic significantly
-    cache_key_version = "v2.1" 
+    cache_key_version = "v2.2" # Incremented cache key for this fix
     cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
     cached_data = load_from_cache(cache_key)
     if cached_data:
@@ -514,7 +487,7 @@ def scrape_tournaments(url, max_details=None, show_progress=True):
         progress_text = st.empty(); progress_bar = st.progress(0.0)
         progress_text.text(f"Analyzing page and finding tournaments from {url}...")
 
-    site_type = detect_site_type(url, html)
+    site_type = detect_site_type(url, html) # url is guaranteed to be non-empty here
     logger.info(f"Detected site type: {site_type} for URL: {url}")
 
     if site_type == 'fsga': tournaments = extract_fsga_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
@@ -567,7 +540,7 @@ def main():
             if url:
                 with st.spinner(f'Scraping {url}...'):
                     try:
-                        results = scrape_tournaments(url, max_details=0, show_progress=True) # max_details = 0 for now
+                        results = scrape_tournaments(url, max_details=0, show_progress=True)
                         st.session_state.tournaments = results
                         if not results: st.warning("No valid tournament data extracted. Check URL or website structure.")
                         else: st.success(f"Processed and found {len(results)} potential tournament entries.")
@@ -607,7 +580,6 @@ def main():
                     except Exception as e: st.error(f"Excel export error: {e}"); logger.error(f"Excel error: {e}")
             elif sel_cols : st.warning("No data to export based on current scrape.")
             else: st.warning("Select columns for export.")
-
         else: st.info("Scrape data first for export options.")
 
 if __name__ == "__main__":
