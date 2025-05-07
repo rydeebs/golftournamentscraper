@@ -92,8 +92,20 @@ def get_page_html_with_browser(url, timeout=15):
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         driver.set_page_load_timeout(timeout)
         driver.get(url)
-        # Wait for JavaScript to render content
-        time.sleep(3)
+        
+        # Wait longer for JavaScript to render content
+        time.sleep(5)
+        
+        # Wait for specific elements to appear
+        if 'fsga.org' in url.lower():
+            # Wait for table rows with tournament data
+            wait_time = 0
+            while wait_time < 10:
+                if len(driver.find_elements("xpath", "//tr[contains(., 'Enter')]")) > 0:
+                    break
+                time.sleep(1)
+                wait_time += 1
+        
         html_content = driver.page_source
         driver.quit()
         return html_content
@@ -420,47 +432,80 @@ def parse_golfgenius_detail_page(soup, url):
     return tournament_data
 
 def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_progress, progress_bar, progress_text):
+    # Log the HTML structure for debugging
+    logger.info(f"HTML structure overview: {soup.title.string if soup.title else 'No title'}")
+    logger.info(f"Number of tables: {len(soup.find_all('table'))}")
+    logger.info(f"Number of rows: {len(soup.find_all('tr'))}")
+    
     tournaments = []; processed_ids = set(); tournament_elements = []
-    if site_type == 'golfgenius': selectors = ['table.search-results-table tr','div.event-list-item', 'div.list-group-item', 'table tr']
-    elif site_type == 'bluegolf': selectors = ['table.scheduleCondensed tr', 'tr.tournamentItem', 'div.eventItem', 'table tr']
-    elif site_type == 'fsga': selectors = ['div.tournament-list-item', 'table.dataTable tbody tr', 'div.card.tournament-card', 'table tr']
-    else: selectors = ['table tr', 'li.event', 'div.event', 'div.item', 'article.event', 'div.tournament-item']
-    for selector in selectors:
-        elements = soup.select(selector)
-        if "tr" in selector: elements = [el for el in elements if el.find('td')]
-        if elements:
-            tournament_elements.extend(elements)
-            logger.info(f"Site {site_type}: Found {len(elements)} elements with selector '{selector}' for {url}")
-    if not tournament_elements and site_type == 'generic':
-        secondary_selectors = ['li', 'div.row', 'div.card']
-        for selector in secondary_selectors:
-            elements = soup.select(selector)
-            elements = [el for el in elements if len(el.get_text(strip=True)) > 30 and el.find('a')]
-            if elements: tournament_elements.extend(elements); logger.info(f"Site {site_type}: Found {len(elements)} elements with fallback selector '{selector}' for {url}")
-    if not tournament_elements:
-        logger.warning(f"No potential tournament elements found on {url} for site type {site_type} with primary selectors.")
-        all_tables = soup.find_all('table')
-        for table_ in all_tables: # Use different variable name for the loop variable
-            rows = table_.find_all('tr'); rows_with_td = [row for row in rows if row.find('td')]
-            if len(rows_with_td) > 0 : tournament_elements.extend(rows_with_td)
-        if tournament_elements: logger.info(f"Found {len(tournament_elements)} rows by checking all tables as a last resort.")
-    total_elements = len(tournament_elements)
-    for i, element in enumerate(tournament_elements):
-        if show_progress and progress_bar and total_elements > 0:
-            progress_bar.progress((i + 1) / total_elements)
-            if progress_text: progress_text.text(f"Processing {site_type} item {i+1} of {total_elements}...")
-        tournament = parse_generic_tournament_item(element, url, site_type=site_type)
-        if tournament and tournament['Tournament ID'] not in processed_ids:
-            tournaments.append(tournament); processed_ids.add(tournament['Tournament ID'])
-    logger.info(f"Extracted {len(tournaments)} unique tournaments from {site_type} schedule at {url}.")
-    return tournaments
+    
+    # Update selectors for FSGA
+    if site_type == 'fsga': 
+        selectors = [
+            'tr:has(td:has(a:contains("Enter")))',  # Rows with "Enter" links
+            'div.tournament-list-item', 
+            'table.dataTable tbody tr', 
+            'div.card.tournament-card',
+            'tr:has(td:nth-child(1):contains("May"))',  # Rows with dates
+            'tr:has(td:nth-child(1):contains("Jun"))',
+            'tr:has(td:nth-child(1):contains("Jul"))'
+        ]
+    
+    # Update selectors for GolfGenius
+    elif site_type == 'golfgenius': 
+        selectors = [
+            'table.search-results-table tr',
+            'div.event-list-item', 
+            'div.list-group-item', 
+            'table.table tr',
+            'div.portlet-event-list div.row',
+            'div.event-item'
+        ]
+    # Rest of your function remains the same...
 
 def extract_golfgenius_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
     return extract_schedule_tournaments_base(soup, url, 'golfgenius', max_details, show_progress, progress_bar, progress_text)
 def extract_bluegolf_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
     return extract_schedule_tournaments_base(soup, url, 'bluegolf', max_details, show_progress, progress_bar, progress_text)
 def extract_fsga_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
-    return extract_schedule_tournaments_base(soup, url, 'fsga', max_details, show_progress, progress_bar, progress_text)
+    # Try to find tournament rows by their structure
+    tournaments = []
+    
+    # Look for date-event pairs
+    date_headers = soup.find_all(['td', 'div'], string=lambda s: s and re.match(r'^\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s*$', s))
+    
+    for date_header in date_headers:
+        tournament_data = initialize_tournament_data()
+        tournament_data['Original Date'] = date_header.get_text(strip=True)
+        
+        # Try to find the tournament name and course
+        parent_row = date_header.find_parent('tr')
+        if parent_row:
+            # Look for the name in the next cell
+            name_cell = date_header.find_next_sibling('td')
+            if name_cell:
+                name_text = name_cell.get_text(strip=True)
+                if name_text:
+                    tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', name_text, flags=re.I).strip()
+                
+                # Look for a link to the tournament details
+                link = name_cell.find('a', href=True)
+                if link:
+                    tournament_data['Detail URL'] = construct_absolute_url(url, link['href'])
+                
+                # Try to extract course and location
+                location_match = re.search(r'([^,]+),\s*([^,]+),\s*FL', name_cell.get_text())
+                if location_match:
+                    tournament_data['Course'] = location_match.group(1).strip()
+                    tournament_data['City'] = location_match.group(2).strip()
+                    tournament_data['State'] = 'FL'
+        
+        if tournament_data['Name'] and tournament_data['Original Date']:
+            tournament_data['Date'] = parse_date(tournament_data['Original Date'])
+            tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
+            tournaments.append(tournament_data)
+    
+    return tournaments
 def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
     return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
 
