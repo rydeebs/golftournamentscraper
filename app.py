@@ -1,628 +1,566 @@
-# START OF FILE app (1).py
-
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import pandas as pd
 import re
-import csv
+from datetime import datetime
 import io
 import base64
-from urllib.parse import urljoin
-import logging
-from datetime import datetime, timedelta
-import time
-import pandas as pd
-import json
-import hashlib
-import os
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# --- Data Cleaning Functions ---
 
-# --- Helper Functions (CSV/JSON Download, Cache, HTTP Get) ---
-def get_table_download_link(data, filename="tournament_data.csv"):
-    if not data: return ""
-    if not isinstance(data, list) or (data and not isinstance(data[0], dict)):
-         logger.error("Data for CSV export is not a list of dictionaries.")
-         if isinstance(data, pd.DataFrame): data = data.to_dict('records')
-         else: return "<p>Error: Invalid data format for CSV export.</p>"
-    try:
-        df = pd.DataFrame(data)
-        desired_cols = ['Original Date', 'Name', 'Course', 'City', 'State', 'Zip']
-        actual_cols = df.columns.tolist()
-        final_cols = [col for col in desired_cols if col in actual_cols]
-        other_cols = [col for col in actual_cols if col not in final_cols]
-        df = df[final_cols + other_cols]
-        csv_string = df.to_csv(index=False)
-        b64 = base64.b64encode(csv_string.encode()).decode()
-        return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV file</a>'
-    except Exception as e:
-        logger.error(f"Error generating CSV link: {e}")
-        return f"<p>Error generating CSV: {e}</p>"
-
-def get_json_download_link(data, filename="tournament_data.json"):
-    if not data: return ""
-    try:
-        json_string = json.dumps(data, indent=2)
-        b64 = base64.b64encode(json_string.encode()).decode()
-        return f'<a href="data:file/json;base64,{b64}" download="{filename}">Download JSON file</a>'
-    except Exception as e:
-        logger.error(f"Error generating JSON link: {e}")
-        return f"<p>Error generating JSON: {e}</p>"
-
-def get_page_html(url, timeout=15, max_retries=3):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-        'Referer': 'https://www.google.com/'  # Add a referer to look more like a real browser
-    }
-    retry_count = 0
-    while retry_count < max_retries:
-        try:
-            if not url.startswith(('http://', 'https://')): url = 'https://' + url
-            response = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-            response.raise_for_status()
-            try: html_content = response.content.decode(response.apparent_encoding)
-            except (UnicodeDecodeError, LookupError): html_content = response.content.decode('utf-8', errors='replace')
-            return html_content
-        except requests.RequestException as e:
-            retry_count += 1
-            error_message = f"Error fetching {url}: {str(e)}"
-            logger.warning(f"Attempt {retry_count} failed: {error_message}")
-            if retry_count >= max_retries:
-                st.error(f"Failed to fetch data from {url} after {max_retries} attempts. Error: {str(e)}")
-                return None
-            time.sleep(1)
-    return None
-
-def get_page_html_with_browser(url, timeout=15):
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+def clean_date(date_str):
+    """Clean and standardize date formats to YYYY-MM-DD."""
+    if pd.isna(date_str) or str(date_str).strip() == '':
+        return None
     
-    try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        driver.set_page_load_timeout(timeout)
-        driver.get(url)
-        
-        # Wait longer for JavaScript to render content
-        time.sleep(5)
-        
-        # Wait for specific elements to appear
-        if 'fsga.org' in url.lower():
-            # Wait for table rows with tournament data
-            wait_time = 0
-            while wait_time < 10:
-                if len(driver.find_elements("xpath", "//tr[contains(., 'Enter')]")) > 0:
-                    break
-                time.sleep(1)
-                wait_time += 1
-        
-        html_content = driver.page_source
-        driver.quit()
-        return html_content
-    except Exception as e:
-        logger.error(f"Error fetching {url} with browser: {str(e)}")
-        return None
-
-def save_to_cache(key, data):
-    cache_dir = ".cache"
-    if not os.path.exists(cache_dir): os.makedirs(cache_dir)
-    cache_file = os.path.join(cache_dir, f"{key}.json")
-    try:
-        with open(cache_file, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e: logger.error(f"Failed to save cache file {cache_file}: {e}")
-
-def load_from_cache(key, max_age_hours=24):
-    cache_dir = ".cache"; cache_file = os.path.join(cache_dir, f"{key}.json")
-    if not os.path.exists(cache_file): return None
-    try:
-        file_age = time.time() - os.path.getmtime(cache_file)
-        if file_age > (max_age_hours * 3600):
-            logger.info(f"Cache expired for key: {key}"); return None
-    except OSError as e: logger.error(f"Error checking cache file age {cache_file}: {e}"); return None
-    try:
-        with open(cache_file, 'r', encoding='utf-8') as f:
-            logger.info(f"Loading data from cache for key: {key}"); return json.load(f)
-    except (json.JSONDecodeError, IOError, UnicodeDecodeError) as e:
-        logger.error(f"Error loading cache file {cache_file}: {e}")
-        try: os.remove(cache_file); logger.info(f"Removed potentially corrupted cache file: {cache_file}")
-        except OSError as de: logger.error(f"Failed to remove corrupted cache file {cache_file}: {de}")
-        return None
-
-# --- Parsing and Extraction Functions ---
-def initialize_tournament_data():
-    return {
-        'Original Date': None, 'Name': None, 'Course': None, 'City': None, 'State': None, 'Zip': None,
-        'Date': None, 'Detail URL': None, 'Tournament ID': None, 'Is Qualifier': False,
-        'Has Qualifiers': None, 'Qualifier Count': None, 'Parent Tournament': None,
-        'Parent Tournament ID': None, 'Eligibility': None, 'Description': None, 'Tournament Type': None,
-    }
-
-def construct_absolute_url(base_url, relative_url):
-    if not relative_url: return None
-    relative_url = str(relative_url).strip()
-    if not base_url and not relative_url.startswith(('http://', 'https://')):
-        logger.warning(f"Cannot construct absolute URL: base_url is missing and relative_url '{relative_url}' is not absolute.")
-        return relative_url
-    if relative_url.startswith(('http://', 'https://')): return relative_url
-    if relative_url.startswith('//'):
-        if base_url and '://' in base_url: scheme = base_url.split('://')[0]
-        else: scheme = 'https'
-        return f"{scheme}:{relative_url}"
-    if relative_url.startswith(('javascript:', 'mailto:', 'tel:', '#')): return None
-    if not base_url:
-        logger.warning(f"base_url not provided for relative_url: {relative_url}. Cannot resolve.")
-        return None
-    try: return urljoin(base_url, relative_url)
-    except ValueError as e:
-        logger.error(f"Error joining base_url '{base_url}' with relative_url '{relative_url}': {e}")
-        return None
-
-def parse_date(date_string):
-    if not date_string: return None
-    date_string = str(date_string).strip()
-    if date_string.lower() in ['tbd', 'tba', '']: return 'TBD'
-    date_formats = ['%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%m-%d-%Y', '%d %B %Y', '%d %b %Y']
-    if ' - ' in date_string: date_string = date_string.split(' - ')[0].strip()
-    elif re.match(r'\w+\s\d+-\d+', date_string): date_string = date_string.split('-')[0].strip()
-    for date_format in date_formats:
+    date_str = str(date_str).strip()
+    
+    # Handle TBD/TBA
+    if date_str.lower() in ['tbd', 'tba', 'n/a', 'na']:
+        return 'TBD'
+    
+    # Handle date ranges (take the first date)
+    if ' - ' in date_str:
+        date_str = date_str.split(' - ')[0].strip()
+    elif ' to ' in date_str.lower():
+        date_str = date_str.lower().split(' to ')[0].strip()
+    
+    # Common date formats to try
+    date_formats = [
+        '%m/%d/%Y', '%m/%d/%y', '%m-%d-%Y', '%m-%d-%y',
+        '%Y-%m-%d', '%Y/%m/%d',
+        '%B %d, %Y', '%b %d, %Y', '%B %d %Y', '%b %d %Y',
+        '%d %B %Y', '%d %b %Y', '%d %B, %Y', '%d %b, %Y',
+        '%B %d', '%b %d',  # Without year
+    ]
+    
+    for fmt in date_formats:
         try:
-            parsed_date = datetime.strptime(date_string, date_format)
-            if parsed_date.year < 100:
-                current_year = datetime.now().year; century = (current_year // 100) * 100
+            parsed_date = datetime.strptime(date_str, fmt)
+            # If year is missing or very old, assume current/next year
+            if parsed_date.year == 1900 or fmt in ['%B %d', '%b %d']:
+                current_year = datetime.now().year
+                parsed_date = parsed_date.replace(year=current_year)
+                # If the date has passed, assume next year
+                if parsed_date < datetime.now():
+                    parsed_date = parsed_date.replace(year=current_year + 1)
+            # Handle 2-digit years
+            elif parsed_date.year < 100:
+                current_year = datetime.now().year
+                century = (current_year // 100) * 100
                 parsed_year = century + parsed_date.year
-                if parsed_year > current_year + 10: parsed_year -= 100
+                if parsed_year > current_year + 10:
+                    parsed_year -= 100
                 parsed_date = parsed_date.replace(year=parsed_year)
             return parsed_date.strftime('%Y-%m-%d')
-        except (ValueError, IndexError): continue
-    logger.warning(f"Could not parse date: {date_string}. Returning original.")
-    return date_string
+        except ValueError:
+            continue
+    
+    # Try regex extraction as fallback
+    date_pattern = r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})'
+    match = re.search(date_pattern, date_str)
+    if match:
+        month, day, year = match.groups()
+        if len(year) == 2:
+            year = f"20{year}" if int(year) < 50 else f"19{year}"
+        try:
+            return f"{year}-{int(month):02d}-{int(day):02d}"
+        except ValueError:
+            pass
+    
+    # Return original if parsing fails
+    return date_str
 
-def extract_clean_date_string(text):
-    if not text: return None
-    text = str(text).strip()
-    patterns = [
-        r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b',
-        r'\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{2,4})?)\b',
-        r'\b(\d{4}-\d{2}-\d{2})\b'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.I)
-        if match:
-            date_candidate = match.group(1).strip()
-            if re.match(r'^[A-Za-z]+\s+\d+$', date_candidate):
-                year_match_in_text = re.search(r'\b(20\d{2})\b', text)
-                if year_match_in_text: date_candidate += f", {year_match_in_text.group(1)}"
-            return date_candidate
+
+def clean_name(name_str):
+    """Clean tournament names."""
+    if pd.isna(name_str) or str(name_str).strip() == '':
+        return None
+    
+    name_str = str(name_str).strip()
+    
+    # Remove common suffixes/prefixes
+    name_str = re.sub(r'\s?\*FULL\*$', '', name_str, flags=re.I)
+    name_str = re.sub(r'\s?\(FULL\)$', '', name_str, flags=re.I)
+    name_str = re.sub(r'\s?\[FULL\]$', '', name_str, flags=re.I)
+    name_str = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', name_str, flags=re.I)
+    name_str = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', name_str, flags=re.I)
+    
+    # Remove extra whitespace
+    name_str = ' '.join(name_str.split())
+    
+    return name_str.strip() if name_str.strip() else None
+
+
+def clean_course(course_str):
+    """Clean golf course names."""
+    if pd.isna(course_str) or str(course_str).strip() == '':
+        return None
+    
+    course_str = str(course_str).strip()
+    
+    # Remove extra whitespace
+    course_str = ' '.join(course_str.split())
+    
+    # Fix common abbreviations
+    course_str = re.sub(r'\bGc\b', 'GC', course_str)
+    course_str = re.sub(r'\bCc\b', 'CC', course_str)
+    course_str = re.sub(r'\bG\.c\.\b', 'GC', course_str, flags=re.I)
+    course_str = re.sub(r'\bC\.c\.\b', 'CC', course_str, flags=re.I)
+    
+    return course_str.strip() if course_str.strip() else None
+
+
+def extract_category(row):
+    """Extract tournament category from name or dedicated column."""
+    # Check if category column exists and has a value
+    if 'category' in row.index and pd.notna(row.get('category')) and str(row.get('category')).strip():
+        cat = str(row['category']).strip()
+        # Standardize existing categories
+        cat_lower = cat.lower()
+        if 'senior' in cat_lower or 'sr' in cat_lower:
+            return 'Senior'
+        elif 'junior' in cat_lower or 'jr' in cat_lower or 'youth' in cat_lower:
+            return 'Junior'
+        elif 'women' in cat_lower or 'ladies' in cat_lower or 'female' in cat_lower:
+            return "Women's"
+        elif 'amateur' in cat_lower:
+            return "Men's Amateur"
+        elif 'men' in cat_lower or 'male' in cat_lower:
+            return "Men's"
+        return cat  # Return as-is if already a valid category
+    
+    # Try to extract from name
+    name = str(row.get('name', '')).lower() if pd.notna(row.get('name')) else ""
+    
+    if re.search(r'\bjunior\b|\bjr\.?\b|\byouth\b|\bboys\b|\bgirls\b', name):
+        return 'Junior'
+    elif re.search(r'\bwomen\'?s\b|\bladies\b|\bfemale\b', name):
+        return "Women's"
+    elif re.search(r'\bsenior\b|\bsr\.?\b|\bsuper.?senior\b', name):
+        return 'Senior'
+    elif re.search(r'\bamateur\b|\bam\b', name):
+        return "Men's Amateur"
+    elif re.search(r'\bmen\'?s\b|\bmale\b', name):
+        return "Men's"
+    
+    return None  # Return None if no category detected
+
+
+def clean_city(city_str):
+    """Clean city names."""
+    if pd.isna(city_str) or str(city_str).strip() == '':
+        return None
+    
+    city_str = str(city_str).strip()
+    
+    # Remove state/zip if accidentally included with city
+    city_str = re.sub(r',\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?$', '', city_str)
+    city_str = re.sub(r',\s*[A-Z]{2}$', '', city_str)
+    city_str = re.sub(r'\s+\d{5}(?:-\d{4})?$', '', city_str)
+    
+    # Remove extra whitespace
+    city_str = ' '.join(city_str.split())
+    
+    # Title case
+    city_str = city_str.title()
+    
+    # Fix common abbreviations
+    city_str = re.sub(r'\bSt\.\s', 'Saint ', city_str)
+    city_str = re.sub(r'\bFt\.\s', 'Fort ', city_str)
+    city_str = re.sub(r'\bMt\.\s', 'Mount ', city_str)
+    
+    return city_str.strip() if city_str.strip() else None
+
+
+def clean_state(state_str):
+    """Clean and standardize state abbreviations."""
+    if pd.isna(state_str) or str(state_str).strip() == '':
+        return None
+    
+    state_str = str(state_str).strip().upper()
+    
+    # If already a valid 2-letter state code, return it
+    valid_states = {
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+    }
+    
+    if state_str in valid_states:
+        return state_str
+    
+    # Map of state names to abbreviations
+    state_map = {
+        'ALABAMA': 'AL', 'ALASKA': 'AK', 'ARIZONA': 'AZ', 'ARKANSAS': 'AR',
+        'CALIFORNIA': 'CA', 'COLORADO': 'CO', 'CONNECTICUT': 'CT', 'DELAWARE': 'DE',
+        'FLORIDA': 'FL', 'GEORGIA': 'GA', 'HAWAII': 'HI', 'IDAHO': 'ID',
+        'ILLINOIS': 'IL', 'INDIANA': 'IN', 'IOWA': 'IA', 'KANSAS': 'KS',
+        'KENTUCKY': 'KY', 'LOUISIANA': 'LA', 'MAINE': 'ME', 'MARYLAND': 'MD',
+        'MASSACHUSETTS': 'MA', 'MICHIGAN': 'MI', 'MINNESOTA': 'MN', 'MISSISSIPPI': 'MS',
+        'MISSOURI': 'MO', 'MONTANA': 'MT', 'NEBRASKA': 'NE', 'NEVADA': 'NV',
+        'NEW HAMPSHIRE': 'NH', 'NEW JERSEY': 'NJ', 'NEW MEXICO': 'NM', 'NEW YORK': 'NY',
+        'NORTH CAROLINA': 'NC', 'NORTH DAKOTA': 'ND', 'OHIO': 'OH', 'OKLAHOMA': 'OK',
+        'OREGON': 'OR', 'PENNSYLVANIA': 'PA', 'RHODE ISLAND': 'RI', 'SOUTH CAROLINA': 'SC',
+        'SOUTH DAKOTA': 'SD', 'TENNESSEE': 'TN', 'TEXAS': 'TX', 'UTAH': 'UT',
+        'VERMONT': 'VT', 'VIRGINIA': 'VA', 'WASHINGTON': 'WA', 'WEST VIRGINIA': 'WV',
+        'WISCONSIN': 'WI', 'WYOMING': 'WY', 'DISTRICT OF COLUMBIA': 'DC'
+    }
+    
+    # Try to match full state name
+    if state_str in state_map:
+        return state_map[state_str]
+    
+    # Try partial match
+    for full_name, abbr in state_map.items():
+        if state_str in full_name or full_name.startswith(state_str):
+            return abbr
+    
+    return state_str if len(state_str) == 2 else None
+
+
+def clean_zip(zip_str):
+    """Clean ZIP codes to 5-digit format."""
+    if pd.isna(zip_str) or str(zip_str).strip() == '':
+        return None
+    
+    zip_str = str(zip_str).strip()
+    
+    # Handle float conversion (e.g., 12345.0)
+    if '.' in zip_str:
+        zip_str = zip_str.split('.')[0]
+    
+    # Extract 5-digit ZIP code
+    zip_match = re.search(r'(\d{5})(?:-\d{4})?', zip_str)
+    if zip_match:
+        return zip_match.group(1)
+    
+    # If it's just digits but less than 5, pad with zeros
+    if zip_str.isdigit() and len(zip_str) < 5:
+        return zip_str.zfill(5)
+    
     return None
 
-def extract_location(text):
-    location_info = {'city': None, 'state': None, 'zip': None}
-    if not text: return location_info
-    text = str(text).strip()
-    match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?', text)
-    if match:
-        location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = match.group(2).strip()
-        location_info['zip'] = match.group(3).strip() if match.group(3) else None; return location_info
-    match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Za-z]{3,})\s*(\d{5}(?:-\d{4})?)?', text)
-    if match:
-        psn = match.group(2).strip()
-        if len(psn) > 2 or (len(psn) == 2 and psn.isupper()):
-             location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = psn
-             location_info['zip'] = match.group(3).strip() if match.group(3) else None; return location_info
-    match = re.search(r'([A-Za-z\s\.-]+?),\s*([A-Z]{2})\b', text)
-    if match:
-        location_info['city'] = match.group(1).strip().rstrip(',.'); location_info['state'] = match.group(2).strip()
-        return location_info
-    return location_info
 
-def extract_golf_course(text):
-    if not text: return None
-    text = str(text).strip()
-    patterns = [
-        r'(?:at|venue|course|host site)\s*[:\-]?\s*([\w\s.&\'\-]+(?:Golf\s*Club|Country\s*Club|Golf\s*Course|G\.?C\.?C?\.?|Golf|Links|Course|Club|Plantation|Preserve|National|Resort|Park|Center| Dunes)\b)',
-        r'\b([\w\s.&\'\-]+(?:Golf\s*Club|Country\s*Club|Golf\s*Course|G\.?C\.?C?\.?|Golf|Links|Course|Club|Plantation|Preserve|National|Resort|Park|Center| Dunes))\b'
-    ]
-    best_match_str = None
-    for pattern in patterns:
-        matches = re.finditer(pattern, text, re.I)
-        for match_obj in matches:
-            candidate = match_obj.group(1).strip()
-            if ',' not in candidate and len(candidate) > 3 and not candidate.lower().endswith((" (east)", " (west)", " (north)", " (south)")):
-                if not re.fullmatch(r'[A-Za-z]{2,}', candidate) or any(kw in candidate.lower() for kw in ["golf", "club", "course", "links", "country", "resort", "national", "center"]):
-                    if best_match_str is None or len(candidate) > len(best_match_str): best_match_str = candidate
-    if best_match_str:
-        best_match_str = re.sub(r'[\s,.-]+$', '', best_match_str); best_match_str = re.sub(r'^\d{4}\s+', '', best_match_str).strip()
-        loc_check = extract_location(best_match_str)
-        if loc_check['city'] and loc_check['state'] and loc_check['city'].lower() == best_match_str.lower().split(',')[0].strip().lower(): return None
-        return best_match_str
+def find_column_match(target, columns):
+    """Find the best matching column name."""
+    target_lower = target.lower()
+    columns_lower = {col: col.lower() for col in columns}
+    
+    # Exact match
+    for col, col_lower in columns_lower.items():
+        if col_lower == target_lower:
+            return col
+    
+    # Contains match
+    for col, col_lower in columns_lower.items():
+        if target_lower in col_lower or col_lower in target_lower:
+            return col
+    
+    # Common aliases
+    aliases = {
+        'date': ['date', 'tournament_date', 'event_date', 'start_date', 'dates'],
+        'name': ['name', 'tournament_name', 'event_name', 'tournament', 'event', 'title'],
+        'course': ['course', 'golf_course', 'venue', 'location', 'club', 'facility'],
+        'category': ['category', 'type', 'division', 'class', 'flight', 'tournament_type'],
+        'city': ['city', 'town', 'municipality'],
+        'state': ['state', 'st', 'province', 'region'],
+        'zip': ['zip', 'zipcode', 'zip_code', 'postal', 'postal_code']
+    }
+    
+    if target_lower in aliases:
+        for alias in aliases[target_lower]:
+            for col, col_lower in columns_lower.items():
+                if alias in col_lower:
+                    return col
+    
     return None
 
-def is_valid_tournament_name(name_text, course_name=None, city_name=None, state_name=None):
-    if not name_text: return False
-    name_text_stripped = str(name_text).strip()
-    if len(name_text_stripped) < 3: return False
-    name_lower = name_text_stripped.lower()
-    NON_TOURNAMENT_KEYWORDS = [
-        "create an account", "printable schedules", "log in", "about us", "contact us", "view leaderboard", "leaderboard", "results",
-        "tee times", "rankings", "standings", "store", "information", "details", "rules", "policies", "format", "golf genius",
-        "registration", "sign up", "membership", "home", "schedule", "news", "bluegolf", "photos", "videos", "sponsors",
-        "directions", "map", "faq", "archive", "fsga", "click here", "read more", "learn more", "welcome", "important notice",
-        "usga", "please wait", "past events", "upcoming events", "all events", "event calendar", "my account", "profile",
-        "settings", "dashboard", "manage account", "pga", "course handicap", "handicap index", "course rating", "slope rating",
-        "lpga", "weather", "forecast", "terms of use", "privacy policy", "site map", "powered by", "official website",
-        "enter a tournament", "show all", "advanced search", "post a score", "tee time reservation", "book now", "add to cart",
-        "select a page", "no events found", "tournament portal", "tournament central",
-    ]
-    for keyword in NON_TOURNAMENT_KEYWORDS:
-        if keyword == name_lower or name_lower.startswith(keyword + " ") or name_lower.endswith(" " + keyword):
-            if keyword in ["juniors", "men's", "women's", "senior", "amateur"] and len(name_lower.split()) > 2: continue
-            return False
-    strong_tournament_indicators = ["championship", "open", "classic", "invitational", "cup", "trophy", "tour", "event", "qualifier", "challenge", "series", "foursomes", "scramble", "inv"]
-    has_strong_indicator = any(indicator in name_lower for indicator in strong_tournament_indicators)
-    if course_name and name_lower == course_name.lower() and not has_strong_indicator: return False
-    if city_name and name_lower == city_name.lower() and not has_strong_indicator: return False
-    if state_name and name_lower == state_name.lower() and not has_strong_indicator: return False
-    if re.fullmatch(r'\d{1,2}/\d{1,2}/\d{2,4}', name_text_stripped) or \
-       re.fullmatch(r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{1,2}(?:,\s*\d{4})?', name_lower) : return False
-    if not has_strong_indicator and (name_lower.endswith(" gc") or name_lower.endswith(" cc") or name_lower.endswith(" golf club") or name_lower.endswith(" country club")):
-        if course_name and name_lower in course_name.lower(): return False
-    if name_lower in ["events", "tournaments", "schedule of events", "tournament schedule"]: return False
-    if re.fullmatch(r'\d{4}', name_text_stripped): return False
-    if re.fullmatch(r'\d+', name_text_stripped) or (len(name_text_stripped.split()) == 1 and len(name_text_stripped) < 5 and not has_strong_indicator): return False
-    return True
 
-def generate_tournament_id(tournament_data):
-    key_data = f"{tournament_data.get('Name', '')}-{tournament_data.get('Original Date', '')}"
-    if tournament_data.get('City') and tournament_data.get('State'): key_data += f"-{tournament_data.get('City')}-{tournament_data.get('State')}"
-    if tournament_data.get('Course'): key_data += f"-{tournament_data.get('Course')}"
-    return hashlib.md5(key_data.encode()).hexdigest()[:12]
+def clean_tournament_data(df):
+    """Apply all cleaning operations to the dataframe."""
+    cleaned_df = df.copy()
+    
+    # Normalize column names (lowercase, strip spaces)
+    cleaned_df.columns = [str(col).strip().lower().replace(' ', '_') for col in cleaned_df.columns]
+    
+    # Map columns to expected names
+    column_mapping = {}
+    expected_columns = ['date', 'name', 'course', 'category', 'city', 'state', 'zip']
+    
+    for expected in expected_columns:
+        match = find_column_match(expected, cleaned_df.columns)
+        if match and match != expected:
+            column_mapping[match] = expected
+    
+    if column_mapping:
+        cleaned_df = cleaned_df.rename(columns=column_mapping)
+    
+    # Ensure all expected columns exist
+    for col in expected_columns:
+        if col not in cleaned_df.columns:
+            cleaned_df[col] = None
+    
+    # Apply cleaning functions
+    if 'date' in cleaned_df.columns:
+        cleaned_df['date'] = cleaned_df['date'].apply(clean_date)
+    
+    if 'name' in cleaned_df.columns:
+        cleaned_df['name'] = cleaned_df['name'].apply(clean_name)
+    
+    if 'course' in cleaned_df.columns:
+        cleaned_df['course'] = cleaned_df['course'].apply(clean_course)
+    
+    if 'city' in cleaned_df.columns:
+        cleaned_df['city'] = cleaned_df['city'].apply(clean_city)
+    
+    if 'state' in cleaned_df.columns:
+        cleaned_df['state'] = cleaned_df['state'].apply(clean_state)
+    
+    if 'zip' in cleaned_df.columns:
+        cleaned_df['zip'] = cleaned_df['zip'].apply(clean_zip)
+    
+    # Extract/clean category
+    cleaned_df['category'] = cleaned_df.apply(extract_category, axis=1)
+    
+    # Reorder columns
+    final_columns = ['date', 'name', 'course', 'category', 'city', 'state', 'zip']
+    other_columns = [col for col in cleaned_df.columns if col not in final_columns]
+    cleaned_df = cleaned_df[final_columns + other_columns]
+    
+    # Capitalize column names for display
+    cleaned_df.columns = [col.replace('_', ' ').title() for col in cleaned_df.columns]
+    
+    return cleaned_df
 
-def is_qualifier_tournament(name):
-    if not name: return False; name_lower = str(name).lower()
-    return any(keyword in name_lower for keyword in ['qualifier', 'qualifying', 'q-school', 'local qualifying', 'sectional qualifying'])
 
-def detect_site_type(url, html=None):
-    if not url: return 'generic'
-    url_lower = url.lower()
-    if 'fsga.org' in url_lower: return 'fsga'
-    if 'golfgenius.com' in url_lower: return 'golfgenius'
-    if 'bluegolf.com' in url_lower: return 'bluegolf'
-    if 'amateurgolf.com' in url_lower: return 'amateurgolf'
-    if html:
-        html_lower = html.lower()
-        if re.search(r'florida state golf association|fsga', html_lower): return 'fsga'
-        if re.search(r'golfgenius|golf genius', html_lower): return 'golfgenius'
-        if re.search(r'bluegolf|blue golf|\'bluegolf\.com\'', html_lower): return 'bluegolf'
-        if re.search(r'amateurgolf\.com', html_lower): return 'amateurgolf'
-    return 'generic'
+def get_csv_download_link(df, filename="cleaned_tournament_data.csv"):
+    """Generate a download link for CSV file."""
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    return f'<a href="data:file/csv;base64,{b64}" download="{filename}" class="download-btn">📥 Download CSV</a>'
 
-def parse_generic_tournament_item(element, base_url, site_type='generic'):
-    tournament_data = initialize_tournament_data(); used_cell_indices = set()
-    if element.name == 'tr':
-        cells = element.find_all(['td', 'th'], recursive=False);
-        if len(cells) < 1: return None
-        cell_contents = [{'index': idx, 'text': ct.get_text(separator=' ', strip=True), 'tag': ct,
-                          'link_url': lt['href'] if (lt := ct.find('a', href=True)) else None,
-                          'link_text': lt.get_text(strip=True) if lt else None} for idx, ct in enumerate(cells)]
-        for ci in cell_contents:
-            if ci['index'] in used_cell_indices: continue
-            cd = extract_clean_date_string(ci['text'])
-            if cd: tournament_data['Original Date'] = cd;
-            if len(cd or "") > len(ci['text']) * 0.5 or len(ci['text']) < 25: used_cell_indices.add(ci['index']); break
-        if not tournament_data['Original Date']:
-            for ci in cell_contents: 
-                cd = extract_clean_date_string(ci['text'])
-                if cd: 
-                    tournament_data['Original Date'] = cd
-                    break
-        for ci in cell_contents:
-            if ci['index'] in used_cell_indices: continue; crs = extract_golf_course(ci['text'])
-            if crs: tournament_data['Course'] = crs; used_cell_indices.add(ci['index']); break
-        if not tournament_data['Course']:
-            for ci in cell_contents: 
-                crs = extract_golf_course(ci['text'])
-                if crs: 
-                    tournament_data['Course'] = crs
-                    break
-        for ci in cell_contents:
-            if ci['index'] in used_cell_indices: continue; loc = extract_location(ci['text'])
-            if loc['city'] and loc['state']: tournament_data.update(loc); used_cell_indices.add(ci['index']); break
-        if not tournament_data['City']:
-            for ci in cell_contents: 
-                loc = extract_location(ci['text'])
-                if loc['city'] and loc['state']: 
-                    tournament_data.update(loc)
-                    break
-        name_candidates = []
-        for ci in cell_contents:
-            if ci['index'] in used_cell_indices and not name_candidates: continue
-            tfn = ci['link_text'] if ci['link_text'] else ci['text']
-            tfn = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', tfn, flags=re.I).strip()
-            tfn = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', tfn, flags=re.I).strip()
-            tfn = re.sub(r'\s?\*FULL\*$', '', tfn, flags=re.I).strip()
-            if is_valid_tournament_name(tfn, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-                au = construct_absolute_url(base_url, ci['link_url']); score = len(tfn) + (20 if au else 0)
-                if tournament_data['Course'] and tournament_data['Course'].lower() in tfn.lower(): score -=10
-                name_candidates.append({'name': tfn, 'url': au, 'score': score})
-        if name_candidates:
-            name_candidates.sort(key=lambda x: x['score'], reverse=True)
-            tournament_data['Name'] = name_candidates[0]['name']; tournament_data['Detail URL'] = name_candidates[0]['url']
-        else:
-            ltxt = "";
-            for ci in cell_contents:
-                if ci['index'] not in used_cell_indices and len(ci['text']) > len(ltxt):
-                    if is_valid_tournament_name(ci['text'],tournament_data['Course'],tournament_data['City'],tournament_data['State']):
-                        ltxt = ci['text']; tournament_data['Detail URL'] = construct_absolute_url(base_url, ci['link_url'])
-            if ltxt: tournament_data['Name'] = ltxt
-    else:
-        etxt = element.get_text(separator=' ', strip=True)
-        tournament_data['Original Date'] = extract_clean_date_string(etxt); tournament_data['Course'] = extract_golf_course(etxt)
-        loc_info = extract_location(etxt); tournament_data.update(loc_info)
-        ncand = etxt; link = element.find('a', href=True); urlcand = None
-        if link: ltxt_ = link.get_text(strip=True); # Renamed to avoid conflict
-        if ltxt_: ncand = ltxt_; urlcand = construct_absolute_url(base_url, link.get('href')) # Use renamed ltxt_
-        ncand = re.sub(r'^(?:View\s)?(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)\s*[-–]?\s*', '', ncand, flags=re.I).strip()
-        ncand = re.sub(r'\s*[-–]?\s*(?:Leaderboard|Results|Details|Info|Tee Times|Register|Enter)$', '', ncand, flags=re.I).strip()
-        ncand = re.sub(r'\s?\*FULL\*$', '', ncand, flags=re.I).strip()
-        if is_valid_tournament_name(ncand, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-            tournament_data['Name'] = ncand; tournament_data['Detail URL'] = urlcand
-        elif is_valid_tournament_name(etxt, tournament_data['Course'], tournament_data['City'], tournament_data['State']):
-             tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', etxt, flags=re.I).strip(); tournament_data['Detail URL'] = urlcand
-    if not tournament_data['Name'] or not tournament_data['Original Date']: return None
-    tournament_data['Date'] = parse_date(tournament_data['Original Date'])
-    tournament_data['Is Qualifier'] = is_qualifier_tournament(tournament_data['Name'])
-    if tournament_data['Is Qualifier']: tournament_data['Tournament Type'] = 'Qualifying Round'
-    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
-    return tournament_data
 
-# CORRECTED parse_golfgenius_detail_page
-def parse_golfgenius_detail_page(soup, url):
-    tournament_data = initialize_tournament_data()
-    tournament_data['Detail URL'] = url
+def get_excel_download_link(df, filename="cleaned_tournament_data.xlsx"):
+    """Generate a download link for Excel file."""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Tournaments')
+    excel_data = output.getvalue()
+    b64 = base64.b64encode(excel_data).decode()
+    return f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}" class="download-btn">📥 Download Excel</a>'
 
-    name_text_candidate = None # Initialize candidate
-    name_tag = soup.select_one('h1.text-white, h1.custom-event-title, h1#event-title, h1.event-title, h1')
-    if name_tag:
-        name_text_candidate = name_tag.get_text(strip=True)
-    
-    if name_text_candidate and is_valid_tournament_name(name_text_candidate):
-        tournament_data['Name'] = name_text_candidate
-    
-    date_elements = soup.select('.gg-event-header-date, .event-date, .portlet-event-date'); date_text_found = None
-    if date_elements: date_text_found = date_elements[0].get_text(strip=True)
-    else:
-        all_text = soup.get_text(" ", strip=True)
-        date_match = re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:(?:st|nd|rd|th)?(?:,\s*\d{4})?)?|\b\d{1,2}/\d{1,2}/\d{2,4}\b', all_text, re.I)
-        if date_match: date_text_found = date_match.group(0)
-    
-    if date_text_found:
-        tournament_data['Original Date'] = extract_clean_date_string(date_text_found)
-        tournament_data['Date'] = parse_date(tournament_data['Original Date'])
-    
-    host_facility_header = soup.find(['h2','h3','strong'], string=re.compile("Host Facilit", re.I)); course_location_text = None
-    if host_facility_header: 
-        next_elem = host_facility_header.find_next_sibling()
-        if next_elem: course_location_text = next_elem.get_text(" ", strip=True)
-    else:
-        potential_course_tags = soup.find_all(string=re.compile(r'Golf Club|Country Club|Links|National|Resort', re.I))
-        if potential_course_tags:
-            for tag_ in potential_course_tags: # Use different variable name for the loop variable
-                parent_block = tag_.find_parent('div', limit=3) # Use tag_
-                if parent_block: course_location_text = parent_block.get_text(" ", strip=True); break
-        if not course_location_text: course_location_text = soup.get_text(" ", strip=True)
-    
-    if course_location_text:
-        tournament_data['Course'] = extract_golf_course(course_location_text)
-        loc_info = extract_location(course_location_text); tournament_data.update(loc_info)
-    
-    if not tournament_data['Name'] or not tournament_data['Original Date']:
-        logger.warning(f"Could not extract essential Name/Date from GolfGenius detail page: {url}"); return None
-    
-    tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
-    return tournament_data
-
-def extract_schedule_tournaments_base(soup, url, site_type, max_details, show_progress, progress_bar, progress_text):
-    # Log the HTML structure for debugging
-    logger.info(f"HTML structure overview: {soup.title.string if soup.title else 'No title'}")
-    logger.info(f"Number of tables: {len(soup.find_all('table'))}")
-    logger.info(f"Number of rows: {len(soup.find_all('tr'))}")
-    
-    tournaments = []; processed_ids = set(); tournament_elements = []
-    
-    # Update selectors for FSGA
-    if site_type == 'fsga': 
-        selectors = [
-            'tr:has(td:has(a:contains("Enter")))',  # Rows with "Enter" links
-            'div.tournament-list-item', 
-            'table.dataTable tbody tr', 
-            'div.card.tournament-card',
-            'tr:has(td:nth-child(1):contains("May"))',  # Rows with dates
-            'tr:has(td:nth-child(1):contains("Jun"))',
-            'tr:has(td:nth-child(1):contains("Jul"))'
-        ]
-    
-    # Update selectors for GolfGenius
-    elif site_type == 'golfgenius': 
-        selectors = [
-            'table.search-results-table tr',
-            'div.event-list-item', 
-            'div.list-group-item', 
-            'table.table tr',
-            'div.portlet-event-list div.row',
-            'div.event-item'
-        ]
-    # Rest of your function remains the same...
-
-def extract_golfgenius_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
-    return extract_schedule_tournaments_base(soup, url, 'golfgenius', max_details, show_progress, progress_bar, progress_text)
-def extract_bluegolf_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
-    return extract_schedule_tournaments_base(soup, url, 'bluegolf', max_details, show_progress, progress_bar, progress_text)
-def extract_fsga_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
-    # Try to find tournament rows by their structure
-    tournaments = []
-    
-    # Look for date-event pairs
-    date_headers = soup.find_all(['td', 'div'], string=lambda s: s and re.match(r'^\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s*$', s))
-    
-    for date_header in date_headers:
-        tournament_data = initialize_tournament_data()
-        tournament_data['Original Date'] = date_header.get_text(strip=True)
-        
-        # Try to find the tournament name and course
-        parent_row = date_header.find_parent('tr')
-        if parent_row:
-            # Look for the name in the next cell
-            name_cell = date_header.find_next_sibling('td')
-            if name_cell:
-                name_text = name_cell.get_text(strip=True)
-                if name_text:
-                    tournament_data['Name'] = re.sub(r'\s?\*FULL\*$', '', name_text, flags=re.I).strip()
-                
-                # Look for a link to the tournament details
-                link = name_cell.find('a', href=True)
-                if link:
-                    tournament_data['Detail URL'] = construct_absolute_url(url, link['href'])
-                
-                # Try to extract course and location
-                location_match = re.search(r'([^,]+),\s*([^,]+),\s*FL', name_cell.get_text())
-                if location_match:
-                    tournament_data['Course'] = location_match.group(1).strip()
-                    tournament_data['City'] = location_match.group(2).strip()
-                    tournament_data['State'] = 'FL'
-        
-        if tournament_data['Name'] and tournament_data['Original Date']:
-            tournament_data['Date'] = parse_date(tournament_data['Original Date'])
-            tournament_data['Tournament ID'] = generate_tournament_id(tournament_data)
-            tournaments.append(tournament_data)
-    
-    return tournaments
-def extract_generic_schedule_tournaments(soup, url, max_details=None, show_progress=True, progress_bar=None, progress_text=None):
-    return extract_schedule_tournaments_base(soup, url, 'generic', max_details, show_progress, progress_bar, progress_text)
-
-def scrape_tournaments(url, max_details=None, show_progress=True):
-    cache_key_version = "v2.4"; cache_key = f"schedule_{cache_key_version}_{hashlib.md5(url.encode()).hexdigest()}"
-    cached_data = load_from_cache(cache_key)
-    if cached_data:
-        if show_progress: st.success(f"Loaded {len(cached_data)} tournaments from cache for {url}.")
-        for item in cached_data: defaults = initialize_tournament_data();
-        for key_def in defaults: item.setdefault(key_def, defaults[key_def]); return cached_data
-    
-    # Use the browser-based method instead of the simple requests method
-    html = get_page_html_with_browser(url)
-    if not html: return []
-    
-    # Debug: Save the HTML to a file to inspect
-    with open("debug_response.html", "w", encoding="utf-8") as f:
-        f.write(html)
-    
-    soup = BeautifulSoup(html, 'html.parser'); tournaments = []
-    if show_progress:
-        progress_text = st.empty(); progress_bar = st.progress(0.0)
-        progress_text.text(f"Analyzing page and finding tournaments from {url}...")
-    site_type = detect_site_type(url, html); logger.info(f"Detected site type: {site_type} for URL: {url}")
-    if site_type == 'fsga': tournaments = extract_fsga_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-    elif site_type == 'golfgenius': tournaments = extract_golfgenius_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-    elif site_type == 'bluegolf': tournaments = extract_bluegolf_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-    else: tournaments = extract_generic_schedule_tournaments(soup, url, max_details, show_progress, progress_bar, progress_text)
-    if site_type == 'golfgenius' and "/pages/" in url.lower() and not tournaments: # Check if schedule parse failed for a detail page
-        logger.info(f"GolfGenius URL {url} looks like a detail page and schedule parse failed. Attempting detail page parse.")
-        tournament_detail = parse_golfgenius_detail_page(soup, url)
-        if tournament_detail: tournaments.append(tournament_detail); logger.info(f"Successfully parsed GolfGenius detail page: {tournament_detail.get('Name')}")
-    if tournaments:
-        for item in tournaments: defaults = initialize_tournament_data();
-        for key_def in defaults: item.setdefault(key_def, defaults[key_def]); save_to_cache(cache_key, tournaments)
-    if show_progress:
-        progress_bar.progress(1.0); progress_text.text(f"Found {len(tournaments)} valid tournament entries from {url}.")
-    return tournaments
 
 # --- Streamlit UI ---
 def main():
-    st.set_page_config(page_title="Golf Tournament Scraper", layout="wide")
-    st.title("Golf Tournament Scraper"); st.markdown("Enter URL of a golf tournament **schedule page**.")
-    st.sidebar.title("Configuration")
-    default_urls = [
-        "https://wpga-onlineregistration.golfgenius.com/pages/1264528",
-        "https://www.fsga.org/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2025&p=2",
-        "https://usamtour.bluegolf.com/bluegolf/usamtour25/schedule/index.htm",
-        "https://www.amateurgolf.com/amateur-golf-tournaments/Golf-Week-Amateur-Tour-Florida"
-    ]
-    url = st.sidebar.text_input("Tournament Schedule URL", value=default_urls[0])
-    st.sidebar.markdown("Example URLs:"); 
-    for ex_url in default_urls: st.sidebar.code(ex_url, language=None)
-    with st.sidebar.expander("Advanced Options"):
-        st.checkbox("Scrape detail pages (slower)", value=False, disabled=True)
-        st.number_input("Max detail pages", min_value=1,value=10,step=1,disabled=True)
-        if st.button("Clear Cache"):
-            cache_dir = ".cache"
-            if os.path.exists(cache_dir):
-                import shutil
-                try: shutil.rmtree(cache_dir); st.success("Cache cleared!")
-                except Exception as e: st.error(f"Error clearing cache: {e}")
-            else: st.info("Cache directory not found.")
-            if 'tournaments' in st.session_state: del st.session_state.tournaments
-        show_debug = st.checkbox("Show debug logs in console", value=False)
-        logging.getLogger().setLevel(logging.DEBUG if show_debug else logging.INFO)
+    st.set_page_config(
+        page_title="Golf Tournament Data Cleaner",
+        page_icon="⛳",
+        layout="wide"
+    )
+    
+    # Custom CSS
+    st.markdown("""
+        <style>
+        .main-header {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1e5631;
+            margin-bottom: 0.5rem;
+        }
+        .sub-header {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: #1e5631;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0.25rem;
+            font-weight: 500;
+        }
+        .download-btn:hover {
+            background-color: #2d7a47;
+        }
+        .stats-box {
+            background-color: #f0f7f0;
+            padding: 1rem;
+            border-radius: 10px;
+            border-left: 4px solid #1e5631;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<p class="main-header">⛳ Golf Tournament Data Cleaner</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Upload a CSV file with tournament data to clean and standardize it.</p>', unsafe_allow_html=True)
+    
+    # Sidebar with instructions
+    with st.sidebar:
+        st.header("📋 Instructions")
+        st.markdown("""
+        **Expected Columns:**
+        - **Date** - Tournament date
+        - **Name** - Tournament name
+        - **Course** - Golf course name
+        - **Category** - Senior, Men's, Women's, Junior, etc.
+        - **City** - City name
+        - **State** - State (name or abbreviation)
+        - **Zip** - ZIP code
+        
+        **What gets cleaned:**
+        - Dates → YYYY-MM-DD format
+        - States → 2-letter abbreviations
+        - ZIP codes → 5-digit format
+        - Names → Remove *FULL*, extra spaces
+        - Categories → Standardized labels
+        """)
+        
+        st.divider()
+        st.markdown("**💡 Tips:**")
+        st.markdown("""
+        - Column names are matched flexibly
+        - Missing columns will be added
+        - Categories are auto-detected from names
+        """)
+    
+    # File uploader
+    uploaded_file = st.file_uploader(
+        "Choose a CSV file",
+        type=['csv'],
+        help="Upload a CSV file containing tournament data"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # Read the CSV file
+            df = pd.read_csv(uploaded_file)
+            
+            # Display original data
+            st.subheader("📄 Original Data")
+            st.dataframe(df, use_container_width=True, height=300)
+            
+            # Show original stats
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Rows", len(df))
+            with col2:
+                st.metric("Total Columns", len(df.columns))
+            with col3:
+                st.metric("Columns Found", ", ".join(df.columns[:4]) + ("..." if len(df.columns) > 4 else ""))
+            
+            st.divider()
+            
+            # Clean the data
+            with st.spinner("Cleaning data..."):
+                cleaned_df = clean_tournament_data(df)
+            
+            # Display cleaned data
+            st.subheader("✨ Cleaned Data")
+            st.dataframe(cleaned_df, use_container_width=True, height=400)
+            
+            # Show cleaning stats
+            st.markdown("### 📊 Cleaning Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                valid_dates = cleaned_df['Date'].notna().sum()
+                st.markdown(f"""
+                <div class="stats-box">
+                    <strong>Valid Dates</strong><br>
+                    {valid_dates} / {len(cleaned_df)}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                valid_names = cleaned_df['Name'].notna().sum()
+                st.markdown(f"""
+                <div class="stats-box">
+                    <strong>Valid Names</strong><br>
+                    {valid_names} / {len(cleaned_df)}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                valid_states = cleaned_df['State'].notna().sum()
+                st.markdown(f"""
+                <div class="stats-box">
+                    <strong>Valid States</strong><br>
+                    {valid_states} / {len(cleaned_df)}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                valid_categories = cleaned_df['Category'].notna().sum()
+                st.markdown(f"""
+                <div class="stats-box">
+                    <strong>Categories Found</strong><br>
+                    {valid_categories} / {len(cleaned_df)}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Category breakdown
+            if valid_categories > 0:
+                st.markdown("### 🏷️ Category Breakdown")
+                category_counts = cleaned_df['Category'].value_counts()
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.dataframe(category_counts.reset_index().rename(columns={'index': 'Category', 'Category': 'Count'}))
+                with col2:
+                    st.bar_chart(category_counts)
+            
+            st.divider()
+            
+            # Download options
+            st.subheader("📥 Download Cleaned Data")
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            
+            with col1:
+                st.markdown(get_csv_download_link(cleaned_df), unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(get_excel_download_link(cleaned_df), unsafe_allow_html=True)
+            
+            # Preview of changes
+            with st.expander("🔍 View Side-by-Side Comparison"):
+                comparison_col1, comparison_col2 = st.columns(2)
+                with comparison_col1:
+                    st.markdown("**Original**")
+                    st.dataframe(df.head(10), use_container_width=True)
+                with comparison_col2:
+                    st.markdown("**Cleaned**")
+                    st.dataframe(cleaned_df.head(10), use_container_width=True)
+                    
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+            st.exception(e)
+    
+    else:
+        # Show sample data format
+        st.info("👆 Upload a CSV file to get started")
+        
+        with st.expander("📋 See example CSV format"):
+            sample_data = pd.DataFrame({
+                'Date': ['5/15/2025', 'June 3, 2025', '2025-07-20'],
+                'Name': ['Senior Championship *FULL*', 'Junior Open', "Women's Amateur Classic"],
+                'Course': ['Pine Valley GC', 'Augusta National Golf Club', 'Pebble Beach'],
+                'Category': ['', '', ''],
+                'City': ['Clementon', 'Augusta', 'Pebble Beach'],
+                'State': ['New Jersey', 'GA', 'California'],
+                'Zip': ['08021', '30904', '93953']
+            })
+            st.dataframe(sample_data, use_container_width=True)
+            
+            st.markdown("**After cleaning, this becomes:**")
+            cleaned_sample = clean_tournament_data(sample_data)
+            st.dataframe(cleaned_sample, use_container_width=True)
 
-    if 'tournaments' not in st.session_state: st.session_state.tournaments = []
-    tab1, tab2 = st.tabs(["Scraper Results", "Export"])
-    with tab1:
-        if st.button("Scrape Tournaments", type="primary"):
-            if url:
-                with st.spinner(f'Scraping {url}...'):
-                    try:
-                        results = scrape_tournaments(url, max_details=0, show_progress=True)
-                        st.session_state.tournaments = results
-                        if not results: st.warning("No valid tournament data extracted. Check URL or website structure.")
-                        else: st.success(f"Processed and found {len(results)} potential tournament entries.")
-                    except Exception as e:
-                        st.error(f"Scraping error: {str(e)}"); logger.exception("Scraping failed:")
-                        st.session_state.tournaments = []
-            else: st.error("Please enter a URL.")
-
-        if st.session_state.tournaments:
-            st.subheader("Tournament Data")
-            display_df = pd.DataFrame([{
-                'Date': t.get('Original Date', ''), 'Name': t.get('Name', ''),
-                'Course': t.get('Course', ''), 'City': t.get('City', ''),
-                'State': t.get('State', ''), 'Zip': t.get('Zip', '')
-            } for t in st.session_state.tournaments])
-            st.dataframe(display_df, use_container_width=True, height=600)
-            with st.expander("Raw Extracted Data (for debugging)"):
-                 st.json(st.session_state.tournaments, expanded=False)
-        elif not url: st.info("Enter URL and click 'Scrape Tournaments'.")
-    with tab2:
-        if st.session_state.tournaments:
-            st.subheader("Export Options")
-            all_cols = list(initialize_tournament_data().keys())
-            def_cols = ['Original Date', 'Name', 'Course', 'City', 'State', 'Zip', 'Date', 'Detail URL']
-            sel_cols = st.multiselect("Columns to export:", all_cols, [c for c in def_cols if c in all_cols])
-            exp_fmt = st.radio("Export format", ["CSV", "JSON", "Excel"])
-            fname = st.text_input("Filename", value="golf_data")
-            exp_data = [{col: t.get(col) for col in sel_cols} for t in st.session_state.tournaments] if sel_cols else None
-            if exp_data:
-                if exp_fmt == "CSV": st.markdown(get_table_download_link(exp_data, f"{fname}.csv"), unsafe_allow_html=True)
-                elif exp_fmt == "JSON": st.markdown(get_json_download_link(exp_data, f"{fname}.json"), unsafe_allow_html=True)
-                elif exp_fmt == "Excel":
-                    try:
-                        xl_buf = io.BytesIO(); pd.DataFrame(exp_data).to_excel(xl_buf, index=False, engine='openpyxl')
-                        b64 = base64.b64encode(xl_buf.getvalue()).decode()
-                        st.markdown(f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{fname}.xlsx">Download Excel</a>', unsafe_allow_html=True)
-                    except Exception as e: st.error(f"Excel export error: {e}"); logger.error(f"Excel error: {e}")
-            elif sel_cols : st.warning("No data to export based on current scrape.")
-            else: st.warning("Select columns for export.")
-        else: st.info("Scrape data first for export options.")
 
 if __name__ == "__main__":
-    try: import openpyxl
-    except ImportError: st.error("'openpyxl' needed for Excel. `pip install openpyxl`"); st.stop()
     main()
