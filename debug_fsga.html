@@ -1,0 +1,1429 @@
+
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="int-tournament">
+<head>
+    <title>Enter a Tournament - FSGA</title>
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+    <meta name="description" content="The Florida State Golf Association provides Florida golfer; club, course, and tournament information, as well GHIN handicap, junior golf services, and much more." />
+    <meta name="keywords" content="fsga, florida golf, florida state golf association" />
+    <meta name="generator" content="nopCommerce" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" default-src 'self'; connect-src *; font-src * data:; frame-src *; img-src * data:; media-src *; object-src *; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline';">
+
+    
+
+
+
+
+
+
+
+
+
+    <link rel="stylesheet" type="text/css" href="/lib_npm/jquery-ui-dist/jquery-ui.min.css?v=d8KCznDQPahoy5dCLM3bb5eH1BY" />
+<link rel="stylesheet" type="text/css" href="/Themes/Fsga/Content/css/bootstrap.min.css?v=We6cOp_CAWbokl1tGj7rk_IEP_0" />
+<link rel="stylesheet" type="text/css" href="/Themes/Fsga/Content/css/styles.css?v=vw4oG6yhzZLqsJx3LrD472BdqZI" />
+<link rel="stylesheet" type="text/css" href="/Themes/Fsga/Content/css/fsga.css?v=FwXbebJTFLjt70THTYtd4GninkQ" />
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" />
+
+
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+                <script async src='https://www.googletagmanager.com/gtag/js?id=G-JB4MPMS3SE'></script>
+                <script>
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  gtag('js', new Date());
+
+                  gtag('config', 'G-JB4MPMS3SE');
+                  
+                  
+                </script>
+
+    
+    
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icons_0/apple-touch-icon.png"> <link rel="icon" type="image/png" sizes="32x32" href="/icons/icons_0/favicon-32x32.png"> <link rel="icon" type="image/png" sizes="16x16" href="/icons/icons_0/favicon-16x16.png"> <link rel="manifest" href="/icons/icons_0/site.webmanifest"> <link rel="mask-icon" href="/icons/icons_0/safari-pinned-tab.svg" color="#5bbad5"> <link rel="shortcut icon" href="/icons/icons_0/favicon.ico"> <meta name="msapplication-TileColor" content="#da532c"> <meta name="msapplication-config" content="/icons/icons_0/browserconfig.xml"> <meta name="theme-color" content="#ffffff">
+    
+    
+    <!--Powered by nopCommerce - https://www.nopCommerce.com-->
+    
+    
+</head>
+<body>
+    <input name="__RequestVerificationToken" type="hidden" value="CfDJ8OSD1jXUIsNLtXDZysXWeu-1vjcHePSvrje4P68pQD4ukDWwD121S-bRTJw1KHYYLN8jn_zysqQto9rkmJgavTgosWhlxkHljaWX4IkJ_bph-eson6AmAzRoxtU7L0OWGeq-VbUUK8Tw0QIoElugXoc" />
+    
+
+<div class="ajax-loading-block-window" style="display: none">
+</div>
+<div id="dialog-notifications-success" title="Notification" style="display:none;">
+</div>
+<div id="dialog-notifications-error" title="Error" style="display:none;">
+</div>
+<div id="dialog-notifications-warning" title="Warning" style="display:none;">
+</div>
+<div id="bar-notification" class="bar-notification-container" data-close="Close">
+</div>
+
+<!--[if lte IE 8]>
+    <div style="clear:both;height:59px;text-align:center;position:relative;">
+        <a href="http://www.microsoft.com/windows/internet-explorer/default.aspx" target="_blank">
+            <img src="/Themes/Fsga/Content/images/ie_warning.jpg" height="42" width="820" alt="You are using an outdated browser. For a faster, safer browsing experience, upgrade for free today." />
+        </a>
+    </div>
+<![endif]--><div class="master-wrapper-page">
+    
+<div class="header">
+    
+    <div class="header-upper">
+        <div class="header-selectors-wrapper">
+            
+            
+            
+            
+        </div>
+        <!--div class="header-links-wrapper">
+            @await Component.InvokeAsync(typeof(HeaderLinksViewComponent))
+            @await Component.InvokeAsync(typeof(FlyoutShoppingCartViewComponent))
+        </!--div-->
+    </div>
+    
+    <!--div class="header-lower">
+        <!--div class="header-logo">
+            @await Component.InvokeAsync(typeof(LogoViewComponent))
+        </div>
+        <div-- class="search-box store-search-box">
+            @await Component.InvokeAsync(typeof(SearchBoxViewComponent))
+        </div>
+    </div-->
+    
+</div>
+
+<div class="overlay"></div>
+<div class="spanner">
+  <div class="loader"></div>
+  <h4 id="busyMessage">Processing your payment, please wait.</h4>
+</div>
+
+
+    
+    <div class="header-menu">
+        
+<div class="fsga-fixed-top">
+
+    <div class="bg-yellow">
+        <div class="container">
+            <div class="row">
+                <div class="col"></div>
+                <div class="col-xs-12 col-md-auto bg-yellow">
+                    
+<div class="header-links">
+    <ul>
+        
+                <li><a href="/Membership/Register" class="ico-register">Create an Account</a></li>
+			<li><a href="https://www.ghin.com/login?returnUrl=/profile" class="ico-logout">Post A Score</a></li>
+			<li><a href="/store" class="ico-logout">Store</a></li>
+			<li><a href="/home/aboutus" class="ico-logout">About Us</a></li>
+			<li><a href="/login?returnUrl=%2FTournamentCategory%2FEnterList%2Fd99ad47f-2e7d-4ff4-8a32-c5b1eb315d28%3Fyear%3D2026" class="ico-login">Log in</a></li>
+        
+    </ul>
+        
+</div>
+
+                </div>
+                <div class="col-xs-12 col-md-auto bg-yellow">
+                    <div class="search-ico desktop-only">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#1b3361" class="bi bi-search" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"></path>
+                        </svg>
+                    </div>
+                    <form method="get" id="small-search-box-form" action="/search">
+        <div class="input-group head-search-box">
+            <input type="text" class="search-box-text form-control" id="small-searchterms" autocomplete="off" name="q" placeholder="Search" aria-label="Search" />
+        
+            <button type="submit" class="btn btn-primary button-1 search-box-button">Search</button>
+            <button class="btn btn-outline-secondary close-search-btn" type="button">X</button>
+        </div>
+            
+</form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="bg-blue">
+        <div class="container">
+            <nav class="navbar navbar-expand-lg navbar-dark">
+                <div class="container-fluid">
+                    <a class="navbar-brand" href="/"><img src="/Themes/Fsga/Content/images/fsga-logo-165.png" /></a>
+                    <div class="search-ico s-ico-mob mobile-only">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ffffff" class="bi bi-search" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"></path>
+                        </svg>
+                    </div>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="navbarNavDropdown">
+                        <ul class="navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="/TournamentCategory" class="nav-link desktop-only" aria-expanded="false">
+                                    TOURNAMENTS
+                                </a>
+                                <a href="/TournamentCategory" class="nav-link mobile-only dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    TOURNAMENTS
+                                </a>
+                                <a class="dropdown-toggle mb-only" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <div style="clear:both"></div>
+                                <div class="dropdown-menu full-page-drop">
+                                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-6">
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/a021b4fb-ac73-4f61-be97-12fdaa682cc0" >Men&#x27;s Championships</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/a021b4fb-ac73-4f61-be97-12fdaa682cc0" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/a021b4fb-ac73-4f61-be97-12fdaa682cc0" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/a021b4fb-ac73-4f61-be97-12fdaa682cc0" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/a021b4fb-ac73-4f61-be97-12fdaa682cc0" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Championship-Policies/775" >Policies</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Men&#x27;s-Championships/29/Rankings" >Rankings</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Men&#x27;s-Championships/14/Players-of-the-Year" >Players of the Year</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Past-Champions/660" >Past Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Men&#x27;s-Championships/31/Men&#x27;s-Interclub" >Men&#x27;s Interclub</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="https://www.fsga.org/TournamentCategory/EnterList/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd?year=2025" >WS - Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/One-Day-Events/27/SW-Am" >Southwest Amateur Series</a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/082efb86-e699-4941-b206-093afef724f2" >Women&#x27;s Championships</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/082efb86-e699-4941-b206-093afef724f2" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/082efb86-e699-4941-b206-093afef724f2" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/082efb86-e699-4941-b206-093afef724f2" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/082efb86-e699-4941-b206-093afef724f2" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Championship-Policies/775" >Policies</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Women&#x27;s-Championships/28/Rankings" >Rankings</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Women&#x27;s-Championships/16/Players-of-the-Year" >Players of the Year</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Past-Champions/660#womens" >Past Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Women&#x27;s-Championships/49/One-Days" >One-Days</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Women&#x27;s-Championships/57/Women&#x27;s-Interclub" >Women&#x27;s Interclub</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Women&#x27;s-Championships/50/The-LinkUp" >The LinkUp</a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/8194ba61-878e-4a09-9399-29ae8f22a53e" >USGA Qualifying</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/8194ba61-878e-4a09-9399-29ae8f22a53e" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/8194ba61-878e-4a09-9399-29ae8f22a53e" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/8194ba61-878e-4a09-9399-29ae8f22a53e" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/8194ba61-878e-4a09-9399-29ae8f22a53e" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="http://www.usga.org/championships-hub/additional-entry-resources.html" target=_blank>FAQs</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="https://champs.usga.org/index.html" target=_blank>Enter</a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >One-Day Events</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/One-Day-Events/63/Rankings" >Rankings</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/One-Day-Events/9/About" >About</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/One-Day-Events/27/Southwest-Amateur-Series" >Southwest Amateur Series</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/One-Day-Events/65/Armed-Forces-Appreciation" >Armed Forces Appreciation</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/FSGA-Partners-with-the-Florida-Hickory-Golfers/1105" >Hickory Golf</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/FSGA-Member-Travel/1205" >Member Travel </a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Juniors - FJT</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/60/Path-to-College-Golf" >Path to College Golf</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/12/Policies" >Policies</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/23/Rankings" >Rankings</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/51/Players-of-the-Year" >Players of the Year</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Past-Champions/660#junior" >Past Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/68/Records" >Records</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Juniors---FJT/24/About" >About</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="https://youthoncourse.org/" target=_blank>Youth on Course</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="https://www.fsga.org/TournamentCategoryLink/USNDP---Team-Florida/69/About" >USNDP - Team Florida</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="https://www.fsga.org/TournamentCategory/EnterList/afdf6fd9-cb91-478b-8dfd-5a5f980ca7f8?year=2026" >USNDP - Team Florida - 2026 Schedule</a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div class="col">
+                                                <ul>
+                                                    <li>
+                                                        <a class="drop-header" href="/TournamentCategory/Details/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd" >Winter Series</a>
+                                                    </li>
+                                                    <li>
+                                                        <a href="/TournamentCategory/Details/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd" >Home</a>
+                                                            <ul>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/EnterList/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd" >Schedule</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/Pairings/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd" >Tee Times &amp; Info</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategory/ResultsList/bebf36d5-b3ac-49d7-a974-46e4d2ca87cd" >Results</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/sections/content/Championship-Policies/775" >Policies</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Winter-Series/18/About---Men" >About - Men</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Winter-Series/64/About---Women" >About - Women</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Winter-Series/25/WS---Player-Rankings" >WS - Player Rankings</a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="/TournamentCategoryLink/Winter-Series/39/WS---Past-Champions" >WS - Past Champions</a>
+                                                                    </li>
+                                                            </ul>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="mn-quick-links">
+                                                <ul>
+                                                    <li><span>Quick Links:</span></li>
+                                                    <li><a href="/Tournament/AllTournamentsEntry">All Tournaments</a></li>
+                                                    <li><a href="/Membership/Home">Withdraw</a></li>
+                                                    <li><a href="/TournamentCategory/AllTeeTimes">All Tee Times</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Membership" aria-expanded="false">MEMBERSHIP</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="/Membership/Home">My Account</a></li>
+                                        <li>
+                                            <a class="dropdown-item" href="/membership" >Join the FSGA</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/FSGA-Handicap-/28" >Buy/Renew a Handicap Online</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Home/AboutUs" >About the FSGA</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Membership/Member-Benefits/26" >Member Benefits</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Clubs/FSGA-Club-Membership/55" >FSGA Club Membership </a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Handicaps" aria-expanded="false">HANDICAPS</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/Buy-Renew-a-Handicap-Online/28" >Buy/Renew a Handicap Online</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://www.ghin.com" target=_blank>Post a Score</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="http://www.usga.org/content/usga/home-page/course-handicap-calculator.html" target=_blank>Course Handicap Calculator</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://www.usga.org/content/usga/home-page/handicapping/world-handicap-system/world-handicap-system-usga-golf-faqs.html" target=_blank>World Handicap System&#x2122; FAQ&#x27;s</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://www.usga.org/content/usga/home-page/handicapping/world-handicap-system/2024-revision.html" target=_blank>2024 World Handicap System&#x2122; Hub</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://www.usga.org/content/dam/usga/pdf/2024-revision/2024-Rules-of-Handicapping-USGA.pdf" target=_blank>2024 Rules of Handicapping Manual</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/Handicapping-and-The-Rules-of-Golf/85" target=_blank>Handicapping &amp; The Rules of Golf</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://cdn.fsga.org/images/uploaded/GHIN/USGAHandicapCommitteeGuideJune2024.pdf" target=_blank>Handicap Committee Guide</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/Stroke-Index-Allocation/1353" target=_blank>Stroke Index Allocation</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://docs.google.com/presentation/d/1GRwxm5Wmc8-xWkJYP6LB1u_VuuJpG1z_WpWwbpTNtLQ/edit?usp=sharing" target=_blank>2025 WHS Seminar Slides</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/Four-Ball-Match-Play-off-the-Low-(2024/1804" target=_blank>Four Ball Match Play off the Low (2024)</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Handicaps/Handicap-Review-Tool---Phase-2/1888" target=_blank>Handicap Review Tool - Phase 2</a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Club" aria-expanded="false">CLUBS</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="/Club/Search">Search Clubs</a></li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Clubs/Course-Rating-and-Measurement-Services/35" >Course Rating &amp; Measurement Services</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Clubs/FSGA-Club-Membership/55" >FSGA Club Membership</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Clubs/Remote-Access-Support/53" >Remote Access Support</a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/JuniorProgram" aria-expanded="false">JUNIORS</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item" href="/TournamentCategory/Details/0eca5fff-9b07-45ad-87cd-d7bbc566424a" >Florida Junior Tour</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/9-12-Division/805" >9-12 Division</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Tournament-Assistance/13" >Player Grants</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/College-Scholarships/38" >College Scholarships</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/JuniorProgram" >Find a Junior Program</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/High-School-Golf/31" >High School Golf</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/Junior-Golf-Links/32" >Junior Golf Links</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/Junior-Coordinator-Resources/34" >Junior Coordinator Resources</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/TournamentCategoryLink/Florida-Junior-Tour/10/College-Golf" >College Golf</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/Team-FSGA/1170" >Team FSGA</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="https://www.fsga.org/TournamentCategoryLink/USNDP---Team-Florida/69/About" >USNDP  - Team Florida</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/Youth-on-Course-Partnership/1711 " target=_blank>Youth on Course</a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Volunteer" aria-expanded="false">VOLUNTEER</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="/volunteer/central">Volunteer Central</a></li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Want-to-Volunteer/11" >Want to Volunteer?</a>
+                                                <ul>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/Committee-Assignments/311" >Committee Assignments</a>
+                                                        </li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Rules-Officials/995" >Rules Officials</a>
+                                                <ul>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/Certified-Rules-Officials/1685" >Certified Rules Officials</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/Rules-Training-and-Certification/12" >Rules Training and Certification</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/USGA-Rules-Certification-Test/971" >USGA Rules Certification Test</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/Rules-of-Golf-Archived-Stories/907" >Rules of Golf Archived Stories</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="/sections/Volunteer/Rules-Discussions/1950" >Rules Discussions</a>
+                                                        </li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/27" >Fall Volunteer Appreciation Days</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Course-Raters/996" >Course Raters</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Board-of-Directors/613" >Board of Directors</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Volunteers-of-the-Year/193" >Volunteers of the Year</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Volunteer/Volunteer-Policies/6" >Volunteer Policies</a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Seminars" aria-expanded="false">SEMINARS</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/26/Introduction-to-Volunteering" >Introduction to Volunteering</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/27" >Fall Volunteer Appreciation Days</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/22/Rules-Certification-Test" >USGA Rules Certification Test</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/1/Rules-of-Golf-Workshops" >Rules of Golf Workshops</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/14/Officiating-and-Rules-Workshops" > Rules &amp; Officiating Workshops</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Seminars/Rules-of-Golf-Resources/941" >Rules of Golf Resources</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Seminars/Category/23/World-Handicap-System-" >World Handicap System&#x2122;</a>
+                                        </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link" href="/Home/Foundation" aria-expanded="false">FOUNDATION</a>
+                                <a class="dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-chevron-compact-down"></i></a>
+                                <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item" href="/Home/FoundationGift" >Give a Gift Now</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Planned-Giving/342" >Planned Giving</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/Home/Foundation" >Future of Golf Foundation</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/College-Scholarships/38" >College Scholarships</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Barry-Masters-Golf-Foundation/1233" >Barry Masters Golf Foundation</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Player-Grants/13" >Player Grants</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Executives-and-Board-/140" >Executives &amp; Board </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Juniors/Team-Florida/1170" >Team FSGA</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/content/Past-FSGA-Presidents/1713" >Past Presidents</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Hall-of-Fame/172" >Hall of Fame</a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="/sections/Foundation/Annual-Awards/681" >Annual Awards</a>
+                                        </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+
+
+</div>
+
+    </div>
+    <div class="master-wrapper-content">
+        
+
+        <div class="master-column-wrapper">
+            
+
+
+
+
+
+
+
+<div class="bg-yellow sub-page-nav">
+	<div class="container">
+				<div class="row">
+					<div class="col-12">
+						<a class="t-category" href="/TournamentCategory/Details/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >One-Day Events</a>
+						
+						<div class="clear sub-nav-line"></div>
+                        <button class="navbar-toggler sub-nav" type="button" data-bs-toggle="collapse" data-bs-target="#subpageNav" aria-controls="subpageNav" aria-expanded="false" aria-label="Toggle navigation">
+                            MORE +
+                        </button>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-12">
+						<nav class="navbar navbar-expand-lg">
+							<div class="container-fluid">
+
+								<div class="collapse navbar-collapse" id="subpageNav">
+									<ul class="navbar-nav">
+										<li class="nav-item">
+											<a class="nav-link active" href="/TournamentCategory/Details/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28">Home</a>
+										</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Schedule</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategory/Pairings/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Tee Times &amp; Info</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategory/ResultsList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28" >Results</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategoryLink/One-Day-Events/63/Rankings" >Rankings</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategoryLink/One-Day-Events/9/About" >About</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategoryLink/One-Day-Events/27/Southwest-Amateur-Series" >Southwest Amateur Series</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/TournamentCategoryLink/One-Day-Events/65/Armed-Forces-Appreciation" >Armed Forces Appreciation</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/sections/content/FSGA-Partners-with-the-Florida-Hickory-Golfers/1105" >Hickory Golf</a>
+												</li>
+												<li class="nav-item">
+													<a class="nav-link" href="/sections/content/FSGA-Member-Travel/1205" >Member Travel </a>
+												</li>
+									</ul>
+								</div>
+							</div>
+						</nav>
+					</div>
+				</div>
+	</div>
+</div>
+
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h1 class="pipe-eyebrow">Enter a Tournament</h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12 col-md-9">
+            <form action="/TournamentCategory/EnterList/" method="post">
+                <div class="row">
+                    <div class="col-5">
+                        <select class="form-select mb-4" aria-label="id" id="id" name="id">
+                            <option value="">Show All</option>
+                                <option  value="0eca5fff-9b07-45ad-87cd-d7bbc566424a">Juniors - FJT</option>
+                                <option  value="a021b4fb-ac73-4f61-be97-12fdaa682cc0">Men&#x27;s Championships</option>
+                                <option  value="2634ce8f-fcda-48b1-be8c-3fbe2dffbb20">Men&#x27;s Interclub </option>
+                                <option selected value="d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28">One-Day Events</option>
+                                <option  value="8194ba61-878e-4a09-9399-29ae8f22a53e">USGA Qualifying</option>
+                                <option  value="afdf6fd9-cb91-478b-8dfd-5a5f980ca7f8">USNDP - Team Florida</option>
+                                <option  value="bebf36d5-b3ac-49d7-a974-46e4d2ca87cd">Winter Series</option>
+                                <option  value="082efb86-e699-4941-b206-093afef724f2">Women&#x27;s Championships</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <select class="form-select mb-4" data-val="true" data-val-number="The field Year must be a number." data-val-required="The Year field is required." id="year" name="year">
+                                <option  value="2028">2028</option>
+                                <option  value="2027">2027</option>
+                                <option selected value="2026">2026</option>
+                                <option  value="2025">2025</option>
+                                <option  value="2024">2024</option>
+                                <option  value="2023">2023</option>
+                                <option  value="2022">2022</option>
+                                <option  value="2021">2021</option>
+                                <option  value="2020">2020</option>
+                                <option  value="2019">2019</option>
+                                <option  value="2018">2018</option>
+                                <option  value="2017">2017</option>
+                                <option  value="2016">2016</option>
+                                <option  value="2015">2015</option>
+                                <option  value="2014">2014</option>
+                                <option  value="2013">2013</option>
+                                <option  value="2012">2012</option>
+                                <option  value="2011">2011</option>
+                                <option  value="2010">2010</option>
+                                <option  value="2009">2009</option>
+                                <option  value="2008">2008</option>
+                                <option  value="2007">2007</option>
+                                <option  value="2006">2006</option>
+                                <option  value="2005">2005</option>
+                                <option  value="2004">2004</option>
+                                <option  value="2003">2003</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <input type="submit" value="Go" class="btn btn-primary mb-4" />
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="col-12 col-md-3 d-md-flex justify-content-md-end">
+            <a href="/sections/content/Printable-Schedules/536" class="btn btn-primary mb-4">Printable Schedules</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="btn-group mb-4">
+                            <a onclick="FilterSubCat('33')" class="btn btn-outline-primary">Central</a>
+                            <a onclick="FilterSubCat('32')" class="btn btn-outline-primary">North</a>
+                            <a onclick="FilterSubCat('26')" class="btn btn-outline-primary">Panhandle</a>
+                            <a onclick="FilterSubCat('2')" class="btn btn-outline-primary">Southeast</a>
+                            <a onclick="FilterSubCat('9')" class="btn btn-outline-primary">Southwest</a>
+                            <a onclick="FilterSubCat('4')" class="btn btn-outline-primary">Team Events</a>
+                            <a onclick="FilterSubCat('13')" class="btn btn-outline-primary">SW Am Series</a>
+                            <a onclick="FilterSubCat('14')" class="btn btn-outline-primary">Women&#x27;s</a>
+                            <a onclick="FilterSubCat('21')" class="btn btn-outline-primary">Hickory Golf</a>
+				<a onclick="RemoveSubCatFilter()" class="btn btn-outline-primary active">View All</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="striped-head-row">
+        <div class="row">     
+            <div class="col-3">Dates</div>
+            <div class="col">Event Information</div>
+        </div>
+    </div>
+
+    <div class="striped-rows">
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Jan 13</h5>
+
+Entries Close: January 8, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/46548bc7-53ef-4ab8-962d-3aac8dada45e">Southern Hills Plantation Club *FULL*</a></h5>
+Southern Hills Plantation Club, Brooksville, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/46548bc7-53ef-4ab8-962d-3aac8dada45e" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Jan 26</h5>
+
+Entries Close: January 21, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/9ae58baf-8f90-47fe-8315-e92b138f99a7">Black Diamond Ranch - Quarry Course *FULL*</a></h5>
+Black Diamond Ranch, Lecanto, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/9ae58baf-8f90-47fe-8315-e92b138f99a7" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Jan 29</h5>
+
+Entries Close: January 24, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/001594ce-8e7f-4c66-a26d-65846a94ad73">Buckhorn Springs G&amp;CC *FULL*</a></h5>
+Buckhorn Springs Golf &amp; Country Club, Valrico, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/001594ce-8e7f-4c66-a26d-65846a94ad73" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Feb 2</h5>
+
+Entries Close: January 28, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/af2f8f70-aa62-4cb8-a851-df8b6770737a">Ardea CC - South Course *FULL*</a></h5>
+Ardea Country Club, Oldsmar, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/af2f8f70-aa62-4cb8-a851-df8b6770737a" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+                        <h5>Feb 7-8</h5>
+
+Entries Close: February 2, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/64e7f862-f48d-47c7-93cd-e58382cee71f">SW Amateur Series - San Carlos</a></h5>
+San Carlos Golf Club, Fort Myers, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/64e7f862-f48d-47c7-93cd-e58382cee71f" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Feb 9</h5>
+
+Entries Close: February 4, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/d1cc5d93-b622-49db-a1a0-242152cdcc94">Club Adena *FULL*</a></h5>
+Club Adena, Ocala, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/d1cc5d93-b622-49db-a1a0-242152cdcc94" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Feb 18</h5>
+
+Entries Close: February 17, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/2da60158-16de-4e3d-9bcf-390324391cc9">The LinkUp Clinic - Rogers Park</a></h5>
+Rogers Park Golf Course, Tampa, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Feb 23</h5>
+
+Entries Close: February 18, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/ee342fd6-5e5e-42cf-8294-000d0c9ab494">Women&#x27;s *Four-Ball* Tampa Palms G &amp; CC</a></h5>
+Tampa Palms Golf &amp; Country Club, Tampa, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/ee342fd6-5e5e-42cf-8294-000d0c9ab494" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 2</h5>
+
+Entries Close: February 25, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/2bc5c6a4-9f00-4706-b4c2-9b21acfa60c2">Ardea CC - North Course *FULL*</a></h5>
+Ardea Country Club, Oldsmar, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/2bc5c6a4-9f00-4706-b4c2-9b21acfa60c2" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 5</h5>
+
+Entries Close: March 5, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/16bb6cec-c135-4217-a586-934e32ad5adf">The LinkUp Sim Night</a></h5>
+Heights Country Club, Tampa, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 9</h5>
+
+Entries Close: March 4, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/05459ab4-de32-48ca-8374-4e935296ea59">Hunter&#x27;s Green CC *FULL*</a></h5>
+Hunter&#x27;s Green Country Club, Tampa, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/05459ab4-de32-48ca-8374-4e935296ea59" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 16</h5>
+
+Entries Close: March 11, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/c50e2871-4542-4a11-ad69-c6aec78b43ff">Rio Pinar G&amp;CC *FULL*</a></h5>
+Rio Pinar Golf and Country Club, Orlando, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/c50e2871-4542-4a11-ad69-c6aec78b43ff" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 19</h5>
+
+Entries Close: March 19, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/05e59afd-d12e-482d-8bf2-8d2f01f901be">The LinkUp Scramble - Temple Terrace</a></h5>
+Temple Terrace Golf &amp; Country Club, Temple Terrace, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 23</h5>
+
+Entries Close: March 18, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/6c1234c7-f11f-4c57-a1c0-a1010b0e5d1a">Cypress Run GC *FULL*</a></h5>
+Cypress Run Golf Club, Tarpon Springs, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+							<a class="btn btn-primary btn-lg min-w-btn" href="/Tournament/Details/6c1234c7-f11f-4c57-a1c0-a1010b0e5d1a" style="margin-top: 0;">Enter</a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-3 striped-row-div">
+						<h5>Mar 27</h5>
+
+Entries Close: March 27, 2026                </div>
+                <div class="col-12 col-md-7 striped-row-div">
+                    <h5 class="enterlistTitle"><a href="/Tournament/Details/9eac4028-ef9b-4e03-8414-b890e9e9dbcf">The LinkUp Scramble - Rio Pinar</a></h5>
+Rio Pinar Golf &amp; Country Club, Orlando, FL                    <div class="tournament-options-menu">
+					</div>
+                </div>
+				<div class="col-12 col-md-2 striped-row-div d-md-flex justify-content-md-end" style="align-items: center;">
+                </div>
+            </div>
+
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+		<div class="pager">
+			<ul class="pages">
+					<li class="btn-prev"><a href="#" style="pointer-events: none;">&laquo; Previous</a></li>
+
+						<li><a href="#" style="pointer-events: none;">1</a></li>
+						<li><a href="/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2026&amp;p=2">2</a></li>
+						<li><a href="/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2026&amp;p=3">3</a></li>
+
+					<li class="btn-next"><a href="/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2026&amp;p=2">Next &raquo;</a></li>
+			</ul>
+		</div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+
+            <h3>Results</h3>
+
+<div id="tournament-results-list">
+    <div class="row results-head-row">
+        <div class="col-2 date-col">
+            <strong class="desktop-only">Date</strong>
+        </div>
+        <div class="col-3 date-col">
+            <strong class="desktop-only">Tournament Name</strong>
+        </div>
+        <div class="col">
+        </div>
+    </div>
+
+
+            <div class="row top-level">
+
+                <div class="col-12 col-lg-2 date-col">January 05, 2026</div>
+                <div class="col-12 col-lg-4 tournament-results-name">
+                    <a href="/Tournament/Details/3591dbd5-f941-4642-b3ef-3d99486e58ea">Orange Tree GC</a>
+                </div>
+				<div class="col results-buttons">
+						<a class="show-results btn btn-primary" data-show-id="show-0" href="#" data-tournament-id="3591dbd5-f941-4642-b3ef-3d99486e58ea" data-start-year="2026">Quick Results</a>
+				</div>
+                <div class="col results-buttons">
+<a class="btn btn-primary" href="/Tournament/Results/3591dbd5-f941-4642-b3ef-3d99486e58ea?boolQual=False">Full Results</a>                </div>
+				<div class="col results-buttons">
+				</div>
+			</div>
+            <div class="row quick-results" data-show-id="show-0" style="display: none;">
+                <div class="col-12">
+                    <div class="quick-results-cell">
+                    </div>
+                </div>
+            </div>
+            <div class="row top-level">
+
+                <div class="col-12 col-lg-2 date-col">January 03, 2026</div>
+                <div class="col-12 col-lg-4 tournament-results-name">
+                    <a href="/Tournament/Details/a5acfae4-aacd-4712-8d6f-e105ecb1bcc7">SW Amateur Series - Ibis Landing GC</a>
+                </div>
+				<div class="col results-buttons">
+						<a class="show-results btn btn-primary" data-show-id="show-1" href="#" data-tournament-id="a5acfae4-aacd-4712-8d6f-e105ecb1bcc7" data-start-year="2026">Quick Results</a>
+				</div>
+                <div class="col results-buttons">
+<a class="btn btn-primary" href="/Tournament/Results/a5acfae4-aacd-4712-8d6f-e105ecb1bcc7?boolQual=False">Full Results</a>                </div>
+				<div class="col results-buttons">
+				</div>
+			</div>
+            <div class="row quick-results" data-show-id="show-1" style="display: none;">
+                <div class="col-12">
+                    <div class="quick-results-cell">
+                    </div>
+                </div>
+            </div>
+
+</div>
+
+
+
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+        
+    </div>
+    
+
+
+<div class="footer">
+
+
+
+    
+
+<div class="flogo-row">
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <img src="/Themes/Fsga/Content/images/fsga-logo-170.png" />
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="footer-partners">
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <h3>Preserving & Protecting the Game Since 1913</h3>
+            </div>
+        </div>
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-2">
+                    <a href="/TournamentCategory/Details/0ECA5FFF-9B07-45AD-87CD-D7BBC566424A" target="_blank"><img src="https://cdn.fsga.org/images/thumbs/0000217_0001609_0.png" /></a>
+            </div>                                                                  
+            <div class="col-12 col-md-2">
+                    <img src="https://cdn.fsga.org/images/thumbs/0000218_0001610_0.png" />
+            </div>                                                                  
+            <div class="col-12 col-md-2">
+                    <img src="https://cdn.fsga.org/images/thumbs/0000219_0001611_0.png" />
+            </div>                                                                  
+            <div class="col-12 col-md-2">
+                    <img src="https://cdn.fsga.org/images/thumbs/0000220_0001612_0.png" />
+            </div>                                                                  
+            <div class="col-12 col-md-2">
+                    <img src="https://cdn.fsga.org/images/thumbs/0000221_0001613_0.png" />
+            </div>                                                                  
+        </div>
+    </div>
+</div>
+
+
+
+    
+<div class="footer-nav">   
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <ul>
+                        <li><span><a href="/TournamentCategory">TOURNAMENTS</a></span></li>
+                        <li><span><a href="/Membership">MEMBERSHIP</a></span></li>
+                        <li><span><a href="/Handicaps">HANDICAPS</a></span></li>
+                        <li><span><a href="/Club">CLUBS</a></span></li>
+                        <li><span><a href="/Volunteer">VOLUNTEER</a></span></li>
+                        <li><span><a href="/Seminars">SEMINARS</a></span></li>
+                        <li><span><a href="/Home/Foundation">FOUNDATION</a></span></li>
+                        <li><span><a href="/Home/AboutUs">ABOUT US</a></span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+
+                    <div class="footer-powered-by">
+                        Powered by <a href="https://www.nopcommerce.com/" target="_blank" rel=nofollow>nopCommerce</a>
+                    </div>
+                
+            </div>
+            <div class="col-md-4">
+                <div class="footer-info">
+                    <span class="footer-disclaimer">
+                        While viewing this site, you are subject to our <a href="/Home/TermsofUse" style="font-size:12px">Terms of Use</a> and <a href="/Home/PrivacyPolicy" style="font-size:12px">Privacy Policy</a>.
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4">
+
+                <div class="footer-info">
+                    <span class="footer-disclaimer">Copyright &copy; 2026 Florida State Golf Association. All rights reserved.</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
+</div>
+
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous" type="text/javascript"></script>
+
+</div>
+
+
+
+    <script type="text/javascript" src="/lib_npm/jquery/jquery.min.js?v=AbhbgVVYSjohyJ-XU6nJTFl_CsM"></script>
+<script type="text/javascript" src="/lib_npm/jquery-validation/jquery.validate.min.js?v=U22TaGQMTXiSkYP7nRQuLepgyvg"></script>
+<script type="text/javascript" src="/lib_npm/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js?v=b46RuPTpRGXIZefh8eAs0iek0oM"></script>
+<script type="text/javascript" src="/lib_npm/jquery-ui-dist/jquery-ui.min.js?v=VQuEegaM6ucmc_zylF9qfK7uNI8"></script>
+<script type="text/javascript" src="/lib_npm/jquery-migrate/jquery-migrate.min.js?v=4OHivFCmDN8R26r54zM5QIRNx-8"></script>
+<script type="text/javascript" src="/js/public.common.js?v=SJoBv3VF8VqDsk40GAnh1l1fMpE"></script>
+<script type="text/javascript" src="/js/public.ajaxcart.js?v=b5Ps0d2TlScpbceT2Hti61Nrrro"></script>
+<script type="text/javascript" src="/js/public.countryselect.js?v=1v2ksscly3NkwIJV06VbEjuRQ_U"></script>
+
+    <script type="text/javascript">
+    $(".top-level:even").css("background-color", "#fff");
+</script>
+
+<script type="text/javascript">
+    function FilterSubCat(id) {
+        const url = new URL(location.href);
+        url.searchParams.delete("subCat");
+        url.searchParams.append("subCat", id);
+        window.location = url.href;
+    }
+
+    function RemoveSubCatFilter() {
+        const url = new URL(location.href);
+        url.searchParams.delete("subCat");
+        window.location = url.href;
+    }
+
+    $(".show-results").click(function (e) {
+        e.preventDefault();
+        var id = $(this).data('show-id');
+        var elements = $('.quick-results');
+
+        for (var i = 0; i <= elements.length; i++) {
+            var thisElement = $(elements[i]);
+            var thisElementId = $(elements[i]).data('show-id');
+            if (thisElementId == id) {
+                var qrRow = thisElement;
+            }
+        }
+
+        if (qrRow.is(":visible")) {
+            qrRow.hide('blind', 500);
+        } else {
+            var postData = {
+                tournamentGuid: $(this).attr("data-tournament-id"),
+                startYear: $(this).attr("data-start-year")
+            };
+            addAntiForgeryToken(postData);
+
+            $.ajax({
+                url: "/TournamentCategory/GetQuickResults",
+                type: "POST",
+                data: postData,
+                success: function (result) {
+                    qrRow.find(".quick-results-cell").html(result);
+                    qrRow.show('blind', 500);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+
+        }
+    });
+</script>
+
+<script type="text/javascript">
+    function showBusyOverlay(message) {
+        $("#busyMessage").text(message);
+        $("div.spanner").addClass("show");
+        $("div.overlay").addClass("show");
+    }
+    function hideBusyOverlay() {
+        $("div.spanner").removeClass("show");
+        $("div.overlay").removeClass("show");
+    }
+</script>
+
+<script type="text/javascript">
+        var localized_data = {
+            AjaxCartFailure: "Failed to add the product. Please refresh the page and try one more time."
+        };
+        AjaxCart.init(false, '.header-links .cart-qty', '.header-links .wishlist-qty', '#flyout-cart', localized_data);
+    </script>
+
+<script type="text/javascript">
+            $(document).ready(function () {
+                $('.header').on('mouseenter', '#topcartlink', function () {
+                    $('#flyout-cart').addClass('active');
+                });
+                $('.header').on('mouseleave', '#topcartlink', function () {
+                    $('#flyout-cart').removeClass('active');
+                });
+                $('.header').on('mouseenter', '#flyout-cart', function () {
+                    $('#flyout-cart').addClass('active');
+                });
+                $('.header').on('mouseleave', '#flyout-cart', function () {
+                    $('#flyout-cart').removeClass('active');
+                });
+            });
+        </script>
+
+<script type="text/javascript">
+                $("#small-search-box-form").on("submit", function(event) {
+                    if ($("#small-searchterms").val() == "") {
+                        alert('Please enter some search keyword');
+                        $("#small-searchterms").focus();
+                        event.preventDefault();
+                    }
+                });
+            </script>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('.bi-search').click(function () {
+            $('#small-search-box-form').slideDown();
+        });
+        $('.close-search-btn').click(function () {
+            $('#small-search-box-form').slideUp();
+        });
+        $('.simp').click(function () {
+            var bigDrop = $('.full-page-drop').hasClass('show');
+            if (bigDrop) {
+                window.scroll({
+                    top: 0,
+                    left: 0,
+                    behavior: 'smooth'
+                });
+            }
+        });
+    });
+</script>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('.footer-block .title').on('click', function () {
+            var e = window, a = 'inner';
+            if (!('innerWidth' in window)) {
+                a = 'client';
+                e = document.documentElement || document.body;
+            }
+            var result = { width: e[a + 'Width'], height: e[a + 'Height'] };
+            if (result.width < 769) {
+                $(this).siblings('.list').slideToggle('slow');
+            }
+        });
+    });
+</script>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('.block .title').on('click', function () {
+            var e = window, a = 'inner';
+            if (!('innerWidth' in window)) {
+                a = 'client';
+                e = document.documentElement || document.body;
+            }
+            var result = { width: e[a + 'Width'], height: e[a + 'Height'] };
+            if (result.width < 1001) {
+                $(this).siblings('.listbox').slideToggle('slow');
+            }
+        });
+        // Move the footer bar up when the admin bar is displayed
+        if ($('.admin-header-links').length) {
+            $('.footer').addClass('footer-with-admin-margin');
+        }
+    });
+</script>
+
+
+    
+    
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ba02fc778758147',t:'MTc2Nzc1NDYzNQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"version":"2024.11.0","token":"2e996c669ce14685a54b1aec7a5fe0fa","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

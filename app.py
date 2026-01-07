@@ -383,52 +383,100 @@ def fetch_page_content(url):
 
 
 def extract_text_from_html(html_content):
-    """Extract readable text from HTML, focusing on tables and lists."""
+    """Extract readable text from HTML, focusing on structured tournament data."""
     soup = BeautifulSoup(html_content, 'html.parser')
     
     # Remove script and style elements
     for element in soup(['script', 'style', 'nav', 'footer', 'header']):
         element.decompose()
     
-    # Try to find tables first (most tournament data is in tables)
-    tables = soup.find_all('table')
-    table_text = ""
-    for table in tables:
-        rows = table.find_all('tr')
-        for row in rows:
-            cells = row.find_all(['td', 'th'])
-            row_text = ' | '.join(cell.get_text(strip=True) for cell in cells)
-            if row_text.strip():
-                table_text += row_text + '\n'
-    
-    # Also get list items and divs that might contain tournament info
-    list_items = soup.find_all(['li', 'div'], class_=lambda x: x and any(
-        keyword in str(x).lower() for keyword in ['tournament', 'event', 'schedule', 'item', 'row', 'card']
-    ))
-    list_text = ""
-    for item in list_items[:50]:  # Limit to avoid too much noise
-        text = item.get_text(strip=True)
-        if len(text) > 20 and len(text) < 500:  # Filter out too short or too long items
-            list_text += text + '\n'
+    extracted_data = []
     
     # Get the page title for context
     title = soup.title.string if soup.title else ""
+    extracted_data.append(f"Page Title: {title}\n")
     
-    # Combine all extracted text
-    combined_text = f"Page Title: {title}\n\n"
-    if table_text:
-        combined_text += "TABLE DATA:\n" + table_text + "\n\n"
-    if list_text:
-        combined_text += "LIST/CARD DATA:\n" + list_text
+    # 1. Try to find tables first (most tournament data is in tables)
+    tables = soup.find_all('table')
+    if tables:
+        extracted_data.append("\n=== TABLE DATA ===")
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all(['td', 'th'])
+                row_text = ' | '.join(cell.get_text(strip=True) for cell in cells)
+                if row_text.strip():
+                    extracted_data.append(row_text)
     
-    # If no structured data found, get main content text
-    if not table_text and not list_text:
+    # 2. Look for FSGA-style striped rows (div-based layouts)
+    striped_containers = soup.find_all('div', class_=lambda x: x and 'striped' in str(x).lower())
+    if striped_containers:
+        extracted_data.append("\n=== STRIPED ROW DATA ===")
+        for container in striped_containers:
+            rows = container.find_all('div', class_='row', recursive=False)
+            for row in rows:
+                # Get all column divs
+                cols = row.find_all('div', recursive=False)
+                row_parts = []
+                for col in cols:
+                    text = col.get_text(strip=True)
+                    if text:
+                        row_parts.append(text)
+                if row_parts:
+                    extracted_data.append(' | '.join(row_parts))
+    
+    # 3. Look for card-based layouts
+    cards = soup.find_all(['div', 'article'], class_=lambda x: x and any(
+        keyword in str(x).lower() for keyword in ['card', 'event-item', 'tournament-item', 'list-item', 'schedule-item']
+    ))
+    if cards:
+        extracted_data.append("\n=== CARD DATA ===")
+        for card in cards[:100]:  # Limit to avoid too much data
+            text = card.get_text(separator=' | ', strip=True)
+            if len(text) > 15 and len(text) < 1000:
+                extracted_data.append(text)
+    
+    # 4. Look for list-based layouts
+    list_containers = soup.find_all(['ul', 'ol'], class_=lambda x: x and any(
+        keyword in str(x).lower() for keyword in ['tournament', 'event', 'schedule', 'list']
+    ))
+    if list_containers:
+        extracted_data.append("\n=== LIST DATA ===")
+        for container in list_containers:
+            items = container.find_all('li')
+            for item in items:
+                text = item.get_text(strip=True)
+                if len(text) > 15:
+                    extracted_data.append(text)
+    
+    # 5. Look for generic row-based layouts (Bootstrap-style)
+    if len(extracted_data) < 5:  # If we haven't found much structured data
+        row_divs = soup.find_all('div', class_=lambda x: x and 'row' in str(x).lower())
+        seen_texts = set()
+        extracted_data.append("\n=== ROW DATA ===")
+        for row in row_divs:
+            # Skip if this is a navigation or header row
+            if row.find_parent(['nav', 'header', 'footer']):
+                continue
+            text = row.get_text(separator=' | ', strip=True)
+            # Only include rows that look like tournament data (have dates or golf keywords)
+            if len(text) > 30 and len(text) < 500:
+                if any(keyword in text.lower() for keyword in ['golf', 'club', 'course', 'championship', 'open', 'amateur', 'enter', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']):
+                    if text not in seen_texts:
+                        seen_texts.add(text)
+                        extracted_data.append(text)
+    
+    # 6. If still no data, get main content
+    if len(extracted_data) < 5:
         main_content = soup.find('main') or soup.find('body')
         if main_content:
-            combined_text += main_content.get_text(separator='\n', strip=True)
+            extracted_data.append("\n=== MAIN CONTENT ===")
+            extracted_data.append(main_content.get_text(separator='\n', strip=True))
     
-    # Limit text length to avoid token limits
-    return combined_text[:15000]
+    combined_text = '\n'.join(extracted_data)
+    
+    # Limit text length to avoid token limits (increased to capture more data)
+    return combined_text[:25000]
 
 
 def parse_tournaments_with_ai(text_content, api_key):
@@ -436,25 +484,31 @@ def parse_tournaments_with_ai(text_content, api_key):
     
     client = OpenAI(api_key=api_key)
     
-    prompt = """You are a data extraction expert. Extract golf tournament information from the following webpage content.
+    prompt = """You are a data extraction expert. Extract ALL golf tournament information from the following webpage content.
+
+IMPORTANT: Extract EVERY tournament entry you find. Do not skip any. Each row/entry typically contains:
+- A date (like "Jan 13", "Feb 7-8", "Mar 2", etc.)
+- A tournament/event name (may include "*FULL*" marker)
+- A golf course or venue name
+- Location info (city, state like "FL" or "Florida")
 
 For each tournament found, extract:
-- date: The tournament date (any format found)
-- name: The tournament name
-- course: The golf course or venue name
-- category: The category if mentioned (Senior, Men's, Women's, Junior, etc.)
-- city: The city
-- state: The state
-- zip: The ZIP code if available
+- date: The tournament date exactly as shown (e.g., "Jan 13", "Feb 7-8")
+- name: The tournament/event name (remove *FULL* markers)
+- course: The golf course or venue name (e.g., "Southern Hills Plantation Club", "Black Diamond Ranch")
+- category: The category if mentioned (Senior, Men's, Women's, Junior, Four-Ball, etc.) - look for keywords in the name
+- city: The city (e.g., "Brooksville", "Fort Myers")
+- state: The state abbreviation (e.g., "FL")
+- zip: The ZIP code if available (usually null)
 
 Return the data as a JSON array of objects. If a field is not found, use null.
-Only include actual tournaments, not navigation items, headers, or other non-tournament content.
-If no tournaments are found, return an empty array [].
+Extract ALL tournaments - there may be 10, 20, or more entries.
+Skip navigation items, headers, footers, and non-tournament content.
 
 Example output format:
 [
-  {"date": "May 15, 2025", "name": "Senior Championship", "course": "Pine Valley Golf Club", "category": "Senior", "city": "Clementon", "state": "NJ", "zip": "08021"},
-  {"date": "June 3, 2025", "name": "Junior Open", "course": "Augusta National", "category": "Junior", "city": "Augusta", "state": "GA", "zip": null}
+  {"date": "Jan 13", "name": "Southern Hills Plantation Club", "course": "Southern Hills Plantation Club", "category": null, "city": "Brooksville", "state": "FL", "zip": null},
+  {"date": "Feb 7-8", "name": "SW Amateur Series - San Carlos", "course": "San Carlos Golf Club", "category": "Amateur", "city": "Fort Myers", "state": "FL", "zip": null}
 ]
 
 Webpage content:
@@ -464,11 +518,11 @@ Webpage content:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a precise data extraction assistant. Always respond with valid JSON only, no markdown formatting or explanation."},
+                {"role": "system", "content": "You are a precise data extraction assistant. Extract ALL tournament entries - do not skip any. Always respond with valid JSON only, no markdown formatting or explanation."},
                 {"role": "user", "content": prompt + text_content}
             ],
             temperature=0.1,
-            max_tokens=4000
+            max_tokens=8000  # Increased to handle more tournaments
         )
         
         result = response.choices[0].message.content.strip()
