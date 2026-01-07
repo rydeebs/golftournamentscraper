@@ -646,8 +646,9 @@ def main():
         st.header("📋 Instructions")
         st.markdown("""
         **Option 1: URL Parsing (AI)**
-        - Enter a tournament schedule URL
+        - Enter one or more URLs (one per line)
         - AI extracts tournament data automatically
+        - Results from all URLs combined into one table
         - Works with most golf tournament websites
         
         **Option 2: CSV Upload**
@@ -657,50 +658,108 @@ def main():
         **Columns extracted:**
         - Date, Name, Course
         - Category, City, State, Zip
+        - Source URL (for multi-URL extractions)
         """)
     
     # Main content with tabs
-    tab1, tab2 = st.tabs(["🌐 Parse from URL", "📄 Upload CSV"])
+    tab1, tab2 = st.tabs(["🌐 Parse from URL(s)", "📄 Upload CSV"])
     
     # --- TAB 1: URL Parsing ---
     with tab1:
-        st.markdown("### Enter a tournament schedule URL")
+        st.markdown("### Enter tournament schedule URLs")
+        st.markdown("*Enter one URL per line to extract data from multiple sources*")
         
-        col1, col2 = st.columns([3, 1])
+        urls_input = st.text_area(
+            "URLs",
+            placeholder="https://www.fsga.org/TournamentCategory/EnterList/...\nhttps://wpga-onlineregistration.golfgenius.com/pages/...\nhttps://usamtour.bluegolf.com/bluegolf/...",
+            height=120,
+            label_visibility="collapsed"
+        )
+        
+        col1, col2 = st.columns([1, 3])
         with col1:
-            url = st.text_input(
-                "URL",
-                placeholder="https://www.fsga.org/tournaments/schedule...",
-                label_visibility="collapsed"
-            )
-        with col2:
             parse_button = st.button("🔍 Extract Data", type="primary", use_container_width=True)
+        with col2:
+            if 'url_results' in st.session_state and st.session_state['url_results'] is not None:
+                clear_button = st.button("🗑️ Clear Results", use_container_width=False)
+                if clear_button:
+                    st.session_state['url_results'] = None
+                    st.session_state['processed_urls'] = []
+                    st.rerun()
         
         # Example URLs
         with st.expander("📌 Example URLs"):
             example_urls = [
-                "https://www.fsga.org/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2025",
+                "https://www.fsga.org/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2026",
                 "https://wpga-onlineregistration.golfgenius.com/pages/1264528",
                 "https://usamtour.bluegolf.com/bluegolf/usamtour25/schedule/index.htm",
             ]
-            for ex_url in example_urls:
-                st.code(ex_url, language=None)
+            st.markdown("Copy and paste these URLs (one per line):")
+            st.code('\n'.join(example_urls), language=None)
         
         if parse_button:
-            if not url:
-                st.error("Please enter a URL")
+            if not urls_input.strip():
+                st.error("Please enter at least one URL")
             elif not api_key:
                 st.error("Please enter your OpenAI API key in the sidebar")
             else:
-                result_df = process_url_with_ai(url, api_key)
+                # Parse multiple URLs
+                urls = [url.strip() for url in urls_input.strip().split('\n') if url.strip()]
                 
-                if result_df is not None and len(result_df) > 0:
-                    st.session_state['url_results'] = result_df
-                    st.success(f"✅ Found {len(result_df)} tournaments!")
+                if len(urls) == 0:
+                    st.error("Please enter at least one valid URL")
+                else:
+                    all_results = []
+                    processed_urls = []
+                    
+                    # Progress tracking
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    for i, url in enumerate(urls):
+                        status_text.text(f"Processing URL {i+1} of {len(urls)}: {url[:50]}...")
+                        progress_bar.progress((i) / len(urls))
+                        
+                        try:
+                            result_df = process_url_with_ai(url, api_key)
+                            
+                            if result_df is not None and len(result_df) > 0:
+                                # Add source URL column
+                                result_df['Source URL'] = url
+                                all_results.append(result_df)
+                                processed_urls.append({'url': url, 'count': len(result_df), 'status': '✅'})
+                                st.success(f"✅ Found {len(result_df)} tournaments from {url[:50]}...")
+                            else:
+                                processed_urls.append({'url': url, 'count': 0, 'status': '⚠️'})
+                                st.warning(f"⚠️ No tournaments found from {url[:50]}...")
+                        except Exception as e:
+                            processed_urls.append({'url': url, 'count': 0, 'status': '❌'})
+                            st.error(f"❌ Error processing {url[:50]}...: {str(e)}")
+                    
+                    progress_bar.progress(1.0)
+                    status_text.text("Processing complete!")
+                    
+                    # Combine all results
+                    if all_results:
+                        combined_df = pd.concat(all_results, ignore_index=True)
+                        st.session_state['url_results'] = combined_df
+                        st.session_state['processed_urls'] = processed_urls
+                        
+                        total_tournaments = len(combined_df)
+                        st.success(f"🎉 Total: {total_tournaments} tournaments extracted from {len([p for p in processed_urls if p['status'] == '✅'])} URL(s)!")
+                    else:
+                        st.error("No tournaments were extracted from any of the URLs.")
         
         # Display results
         if 'url_results' in st.session_state and st.session_state['url_results'] is not None:
             df = st.session_state['url_results']
+            
+            # Show processing summary if multiple URLs were processed
+            if 'processed_urls' in st.session_state and len(st.session_state['processed_urls']) > 1:
+                with st.expander("📋 Processing Summary", expanded=False):
+                    summary_df = pd.DataFrame(st.session_state['processed_urls'])
+                    summary_df.columns = ['URL', 'Tournaments Found', 'Status']
+                    st.dataframe(summary_df, use_container_width=True)
             
             st.markdown("### 📊 Extracted Tournament Data")
             st.dataframe(df, use_container_width=True, height=400)
@@ -716,8 +775,12 @@ def main():
                 valid_courses = df['Course'].notna().sum()
                 st.metric("Valid Courses", f"{valid_courses}/{len(df)}")
             with col4:
-                categories = df['Category'].notna().sum()
-                st.metric("Categories Found", f"{categories}/{len(df)}")
+                if 'Source URL' in df.columns:
+                    unique_sources = df['Source URL'].nunique()
+                    st.metric("Sources", unique_sources)
+                else:
+                    categories = df['Category'].notna().sum()
+                    st.metric("Categories Found", f"{categories}/{len(df)}")
             
             # Download buttons
             st.markdown("### 📥 Download")
