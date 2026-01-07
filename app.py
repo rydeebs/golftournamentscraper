@@ -505,53 +505,58 @@ def extract_state_from_url(url):
     return None
 
 
-def filter_old_dates(df):
-    """Filter out tournaments with dates from 2025 or earlier based on any year found in the row."""
+def filter_old_dates(df, raw_text_content=None):
+    """Filter out tournaments with entries_close_year of 2025 or earlier."""
     if df is None or len(df) == 0:
         return df
     
     df = df.copy()
     rows_to_keep = []
     
-    for idx, row in df.iterrows():
-        # Combine all text fields to check for years
-        # This catches "Entries Close: August 13, 2025" even if it's in the date field
-        all_text = ' '.join(str(v) for v in row.values if pd.notna(v))
-        
-        # Look for "Entries Close" pattern with a year - this is the key indicator
-        entries_close_match = re.search(r'entries\s*close[:\s]*[^0-9]*(\d{1,2}[,\s]+)?(20\d{2})', all_text, re.I)
-        
-        if entries_close_match:
-            year = int(entries_close_match.group(2))
-            if year >= 2026:
-                rows_to_keep.append(idx)
-            # Skip if entries close year is 2025 or earlier
-            continue
-        
-        # If no "Entries Close" pattern, check the date column specifically
-        col_map = {col.lower().replace(' ', '_'): col for col in df.columns}
-        date_col = col_map.get('date')
-        
-        if date_col:
-            date_val = row.get(date_col)
-            if pd.notna(date_val):
-                date_str = str(date_val).strip()
-                
-                # Look for any 4-digit year in the date
-                year_match = re.search(r'\b(20\d{2})\b', date_str)
-                
-                if year_match:
-                    year = int(year_match.group(1))
-                    if year >= 2026:
-                        rows_to_keep.append(idx)
-                    # Skip if year is 2025 or earlier
-                    continue
-        
-        # No year found anywhere - keep the row
-        rows_to_keep.append(idx)
+    # Find the entries_close_year column (case insensitive)
+    ec_year_col = None
+    for col in df.columns:
+        if 'entries_close_year' in col.lower().replace(' ', '_'):
+            ec_year_col = col
+            break
     
-    # Return filtered dataframe
-    return df.loc[rows_to_keep].reset_index(drop=True)
+    for idx, row in df.iterrows():
+        # Check entries_close_year column first (most reliable)
+        if ec_year_col:
+            ec_year = row.get(ec_year_col)
+            if pd.notna(ec_year):
+                try:
+                    year = int(ec_year)
+                    if year <= 2025:
+                        # Skip - entries close is in 2025 or earlier
+                        continue
+                    else:
+                        rows_to_keep.append(idx)
+                        continue
+                except (ValueError, TypeError):
+                    pass
+        
+        # Fallback: check all text in the row for years
+        all_text = ' '.join(str(v) for v in row.values if pd.notna(v))
+        all_years = re.findall(r'\b(20\d{2})\b', all_text)
+        
+        if all_years:
+            years = [int(y) for y in all_years]
+            # If any year is 2025 or earlier, skip
+            if min(years) <= 2025:
+                continue
+            else:
+                rows_to_keep.append(idx)
+        else:
+            # No year found anywhere - keep the row
+            rows_to_keep.append(idx)
+    
+    # Return filtered dataframe (drop the entries_close_year column from output)
+    result_df = df.loc[rows_to_keep].reset_index(drop=True)
+    if ec_year_col and ec_year_col in result_df.columns:
+        result_df = result_df.drop(columns=[ec_year_col])
+    
+    return result_df
 
 
 def apply_url_based_defaults(df, source_url=None):
@@ -743,12 +748,14 @@ def parse_tournaments_with_ai(text_content, api_key):
 
 IMPORTANT: Extract EVERY tournament entry you find. Do not skip any. Each row/entry typically contains:
 - A date (like "Jan 13", "Feb 7-8", "Mar 2", etc.)
+- An "Entries Close" date with a year (like "Entries Close: August 13, 2025")
 - A tournament/event name (may include "*FULL*" marker)
 - A golf course or venue name
 - Location info (city, state like "FL" or "Florida")
 
 For each tournament found, extract:
 - date: The tournament date exactly as shown (e.g., "Jan 13", "Feb 7-8")
+- entries_close_year: The YEAR from the "Entries Close" date if present (e.g., 2025, 2026). This is CRITICAL for filtering. Look for patterns like "Entries Close: August 13, 2025" and extract just the year (2025).
 - name: The tournament/event name (remove *FULL* markers)
 - course: The golf course or venue name (e.g., "Southern Hills Plantation Club", "Black Diamond Ranch")
 - category: The category if mentioned (Senior, Men's, Women's, Junior, Four-Ball, etc.) - look for keywords in the name
@@ -762,8 +769,8 @@ Skip navigation items, headers, footers, and non-tournament content.
 
 Example output format:
 [
-  {"date": "Jan 13", "name": "Southern Hills Plantation Club", "course": "Southern Hills Plantation Club", "category": null, "city": "Brooksville", "state": "FL", "zip": null},
-  {"date": "Feb 7-8", "name": "SW Amateur Series - San Carlos", "course": "San Carlos Golf Club", "category": "Amateur", "city": "Fort Myers", "state": "FL", "zip": null}
+  {"date": "Jan 13", "entries_close_year": 2026, "name": "Senior Championship", "course": "Southern Hills Plantation Club", "category": "Senior", "city": "Brooksville", "state": "FL", "zip": null},
+  {"date": "May 2-6", "entries_close_year": 2025, "name": "U.S. Women's Amateur Four-Ball", "course": "Desert Mountain Club", "category": "Women's", "city": "Scottsdale", "state": "AZ", "zip": null}
 ]
 
 Webpage content:
@@ -832,7 +839,8 @@ def process_url_with_ai(url, api_key):
     cleaned_df = apply_url_based_defaults(cleaned_df, source_url=url)
     
     # Step 6: Filter out tournaments with dates from 2025 or earlier
-    cleaned_df = filter_old_dates(cleaned_df)
+    # Pass the raw text content so we can check "Entries Close" dates
+    cleaned_df = filter_old_dates(cleaned_df, raw_text_content=text_content)
     
     return cleaned_df
 
@@ -909,21 +917,59 @@ def main():
         **Option 1: URL Parsing (AI)**
         - Enter one or more URLs (one per line)
         - AI extracts tournament data automatically
-        - Results from all URLs combined into one table
-        - Works with most golf tournament websites
         
         **Option 2: CSV Upload**
         - Upload your own CSV file
         - Data gets cleaned and standardized
         
-        **Columns extracted:**
-        - Date, Name, Course
-        - Category, City, State, Zip
-        - Source URL (for multi-URL extractions)
+        **Option 3: Paste Content**
+        - Copy text from protected pages
+        - AI extracts tournament data
         """)
+        
+        st.divider()
+        
+        # --- Combined Results Section ---
+        col_header, col_refresh = st.columns([3, 1])
+        with col_header:
+            st.header("📦 Combined Results")
+        with col_refresh:
+            st.write("")  # Spacing
+            if st.button("🔄", help="Refresh to see latest count", key="refresh_sidebar"):
+                st.rerun()
+        
+        # Initialize combined results in session state
+        if 'combined_results' not in st.session_state:
+            st.session_state['combined_results'] = pd.DataFrame()
+        
+        combined_df = st.session_state['combined_results']
+        
+        if len(combined_df) > 0:
+            st.success(f"**{len(combined_df)}** tournaments collected")
+            
+            # Show breakdown by source if available
+            if 'Source URL' in combined_df.columns or 'Source' in combined_df.columns:
+                source_col = 'Source URL' if 'Source URL' in combined_df.columns else 'Source'
+                sources = combined_df[source_col].nunique()
+                st.caption(f"From {sources} source(s)")
+            
+            # Download buttons
+            st.markdown(get_csv_download_link(combined_df, "all_tournaments.csv"), unsafe_allow_html=True)
+            st.markdown(get_excel_download_link(combined_df, "all_tournaments.xlsx"), unsafe_allow_html=True)
+            
+            # Clear button
+            if st.button("🗑️ Clear All", use_container_width=True):
+                st.session_state['combined_results'] = pd.DataFrame()
+                st.rerun()
+            
+            # Preview expander
+            with st.expander("Preview data"):
+                st.dataframe(combined_df, height=200)
+        else:
+            st.info("Extract data from any tab to start collecting tournaments here.")
     
     # Main content with tabs
-    tab1, tab2 = st.tabs(["🌐 Parse from URL(s)", "📄 Upload CSV"])
+    tab1, tab2, tab3 = st.tabs(["🌐 Parse from URL(s)", "📄 Upload CSV", "📋 Paste Content"])
     
     # --- TAB 1: URL Parsing ---
     with tab1:
@@ -947,16 +993,6 @@ def main():
                     st.session_state['url_results'] = None
                     st.session_state['processed_urls'] = []
                     st.rerun()
-        
-        # Example URLs
-        with st.expander("📌 Example URLs"):
-            example_urls = [
-                "https://www.fsga.org/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2026",
-                "https://wpga-onlineregistration.golfgenius.com/pages/1264528",
-                "https://usamtour.bluegolf.com/bluegolf/usamtour25/schedule/index.htm",
-            ]
-            st.markdown("Copy and paste these URLs (one per line):")
-            st.code('\n'.join(example_urls), language=None)
         
         if parse_button:
             if not urls_input.strip():
@@ -1006,8 +1042,17 @@ def main():
                         st.session_state['url_results'] = combined_df
                         st.session_state['processed_urls'] = processed_urls
                         
+                        # Add to combined results in sidebar
+                        if 'combined_results' not in st.session_state:
+                            st.session_state['combined_results'] = pd.DataFrame()
+                        st.session_state['combined_results'] = pd.concat(
+                            [st.session_state['combined_results'], combined_df], 
+                            ignore_index=True
+                        ).drop_duplicates(subset=['Date', 'Name', 'Course'], keep='first')
+                        
                         total_tournaments = len(combined_df)
                         st.success(f"🎉 Total: {total_tournaments} tournaments extracted from {len([p for p in processed_urls if p['status'] == '✅'])} URL(s)!")
+                        st.info(f"📦 Added to combined results ({len(st.session_state['combined_results'])} total in sidebar)")
                     else:
                         st.error("No tournaments were extracted from any of the URLs.")
         
@@ -1098,8 +1143,22 @@ def main():
                     valid_categories = cleaned_df['Category'].notna().sum()
                     st.metric("Categories", f"{valid_categories}/{len(cleaned_df)}")
                 
+                # Add to combined results button
+                st.markdown("### 📦 Add to Combined Results")
+                if st.button("➕ Add to Combined Results", key="add_csv_to_combined", use_container_width=True):
+                    cleaned_df_with_source = cleaned_df.copy()
+                    cleaned_df_with_source['Source'] = uploaded_file.name
+                    
+                    if 'combined_results' not in st.session_state:
+                        st.session_state['combined_results'] = pd.DataFrame()
+                    st.session_state['combined_results'] = pd.concat(
+                        [st.session_state['combined_results'], cleaned_df_with_source], 
+                        ignore_index=True
+                    ).drop_duplicates(subset=['Date', 'Name', 'Course'], keep='first')
+                    st.success(f"✅ Added {len(cleaned_df)} tournaments to combined results ({len(st.session_state['combined_results'])} total)")
+                
                 # Download options
-                st.markdown("### 📥 Download Cleaned Data")
+                st.markdown("### 📥 Download This File Only")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown(get_csv_download_link(cleaned_df), unsafe_allow_html=True)
@@ -1123,6 +1182,139 @@ def main():
                     'Zip': ['08021', '30904', '93953']
                 })
                 st.dataframe(sample_data, use_container_width=True)
+    
+    # --- TAB 3: Paste Content ---
+    with tab3:
+        st.markdown("### Paste content from a protected page")
+        st.markdown("*For pages that require login (like Golf Genius), simply copy the visible text or HTML and paste it here.*")
+        
+        st.info("""
+        **How to copy content:**
+        - **Easy way:** Select all visible text on the page (Cmd+A / Ctrl+A) and copy (Cmd+C / Ctrl+C)
+        - **Alternative:** Right-click → View Page Source, then copy all HTML
+        
+        Both formats work! The AI will extract tournament data from whatever you paste.
+        """)
+        
+        # Optional: source URL for state/category inference
+        source_url_input = st.text_input(
+            "Source URL (optional)",
+            placeholder="https://www.golfgenius.com/leagues/36562/...",
+            help="Enter the original URL to help infer state and category"
+        )
+        
+        html_input = st.text_area(
+            "Paste content here",
+            placeholder="Paste tournament listings here...\n\nExample:\n44th Alabama State Four-Ball Championship\nWed, Apr 29, 2026 - Sat, May 2, 2026\nCourse: Canebrake Club\n...",
+            height=250,
+            label_visibility="collapsed"
+        )
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            parse_html_button = st.button("🔍 Extract Data", type="primary", use_container_width=True, key="parse_html")
+        with col2:
+            if 'html_results' in st.session_state and st.session_state['html_results'] is not None:
+                clear_html_button = st.button("🗑️ Clear Results", use_container_width=False, key="clear_html")
+                if clear_html_button:
+                    st.session_state['html_results'] = None
+                    st.rerun()
+        
+        if parse_html_button:
+            if not html_input.strip():
+                st.error("Please paste content")
+            elif not api_key:
+                st.error("Please enter your OpenAI API key in the sidebar")
+            elif len(html_input) < 100:
+                st.error("Content seems too short. Make sure you copied enough text.")
+            else:
+                try:
+                    # Determine if it's HTML or plain text
+                    is_html = html_input.strip().startswith('<') or '<html' in html_input.lower() or '<div' in html_input.lower()
+                    
+                    if is_html:
+                        # Extract text from HTML
+                        with st.spinner("Extracting content from HTML..."):
+                            text_content = extract_text_from_html(html_input)
+                    else:
+                        # Use the text directly
+                        text_content = html_input.strip()
+                    
+                    if not text_content or len(text_content) < 50:
+                        st.warning("Could not extract meaningful content.")
+                    else:
+                        st.success(f"Processing {len(text_content)} characters of content...")
+                        
+                        # Parse with AI
+                        with st.spinner("AI is analyzing the content..."):
+                            tournaments = parse_tournaments_with_ai(text_content, api_key)
+                            
+                            if not tournaments:
+                                st.warning("No tournaments found in the content.")
+                            else:
+                                # Convert to DataFrame and clean
+                                df = pd.DataFrame(tournaments)
+                                cleaned_df = clean_tournament_data(df)
+                                
+                                # Apply URL-based defaults if source URL provided
+                                if source_url_input.strip():
+                                    cleaned_df = apply_url_based_defaults(cleaned_df, source_url=source_url_input.strip())
+                                else:
+                                    cleaned_df = apply_url_based_defaults(cleaned_df)
+                                
+                                # Filter old dates
+                                cleaned_df = filter_old_dates(cleaned_df, raw_text_content=text_content)
+                                
+                                # Add source info
+                                if source_url_input.strip():
+                                    cleaned_df['Source URL'] = source_url_input.strip()
+                                else:
+                                    cleaned_df['Source'] = 'Pasted Content'
+                                
+                                st.session_state['html_results'] = cleaned_df
+                                
+                                # Add to combined results
+                                if 'combined_results' not in st.session_state:
+                                    st.session_state['combined_results'] = pd.DataFrame()
+                                st.session_state['combined_results'] = pd.concat(
+                                    [st.session_state['combined_results'], cleaned_df], 
+                                    ignore_index=True
+                                ).drop_duplicates(subset=['Date', 'Name', 'Course'], keep='first')
+                                
+                                st.success(f"🎉 Found {len(cleaned_df)} tournaments!")
+                                st.info(f"📦 Added to combined results ({len(st.session_state['combined_results'])} total in sidebar)")
+                            
+                except Exception as e:
+                    st.error(f"Error processing content: {str(e)}")
+        
+        # Display results
+        if 'html_results' in st.session_state and st.session_state['html_results'] is not None:
+            df = st.session_state['html_results']
+            
+            st.markdown("### 📊 Extracted Tournament Data")
+            st.dataframe(df, use_container_width=True, height=400)
+            
+            # Stats
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Tournaments", len(df))
+            with col2:
+                valid_dates = df['Date'].notna().sum()
+                st.metric("Valid Dates", f"{valid_dates}/{len(df)}")
+            with col3:
+                valid_courses = df['Course'].notna().sum()
+                st.metric("Valid Courses", f"{valid_courses}/{len(df)}")
+            with col4:
+                valid_states = df['State'].notna().sum()
+                st.metric("Valid States", f"{valid_states}/{len(df)}")
+            
+            # Download buttons
+            st.markdown("### 📥 Download")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(get_csv_download_link(df, "tournament_data_from_html.csv"), unsafe_allow_html=True)
+            with col2:
+                st.markdown(get_excel_download_link(df, "tournament_data_from_html.xlsx"), unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
