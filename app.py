@@ -506,44 +506,49 @@ def extract_state_from_url(url):
 
 
 def filter_old_dates(df):
-    """Filter out tournaments with dates from 2025 or earlier (only if year is specified)."""
+    """Filter out tournaments with dates from 2025 or earlier based on any year found in the row."""
     if df is None or len(df) == 0:
         return df
     
     df = df.copy()
-    
-    # Find the date column
-    col_map = {col.lower().replace(' ', '_'): col for col in df.columns}
-    date_col = col_map.get('date')
-    
-    if not date_col:
-        return df
-    
     rows_to_keep = []
     
     for idx, row in df.iterrows():
-        date_val = row.get(date_col)
+        # Combine all text fields to check for years
+        # This catches "Entries Close: August 13, 2025" even if it's in the date field
+        all_text = ' '.join(str(v) for v in row.values if pd.notna(v))
         
-        # If no date, keep the row
-        if pd.isna(date_val) or str(date_val).strip() == '':
-            rows_to_keep.append(idx)
-            continue
+        # Look for "Entries Close" pattern with a year - this is the key indicator
+        entries_close_match = re.search(r'entries\s*close[:\s]*[^0-9]*(\d{1,2}[,\s]+)?(20\d{2})', all_text, re.I)
         
-        date_str = str(date_val).strip()
-        
-        # Check if the date contains a year
-        # Look for 4-digit year patterns
-        year_match = re.search(r'\b(20\d{2})\b', date_str)
-        
-        if year_match:
-            year = int(year_match.group(1))
-            # Only keep if year is 2026 or later
+        if entries_close_match:
+            year = int(entries_close_match.group(2))
             if year >= 2026:
                 rows_to_keep.append(idx)
-            # If year is 2025 or earlier, skip this row (don't add to rows_to_keep)
-        else:
-            # No year specified in the date, keep the row
-            rows_to_keep.append(idx)
+            # Skip if entries close year is 2025 or earlier
+            continue
+        
+        # If no "Entries Close" pattern, check the date column specifically
+        col_map = {col.lower().replace(' ', '_'): col for col in df.columns}
+        date_col = col_map.get('date')
+        
+        if date_col:
+            date_val = row.get(date_col)
+            if pd.notna(date_val):
+                date_str = str(date_val).strip()
+                
+                # Look for any 4-digit year in the date
+                year_match = re.search(r'\b(20\d{2})\b', date_str)
+                
+                if year_match:
+                    year = int(year_match.group(1))
+                    if year >= 2026:
+                        rows_to_keep.append(idx)
+                    # Skip if year is 2025 or earlier
+                    continue
+        
+        # No year found anywhere - keep the row
+        rows_to_keep.append(idx)
     
     # Return filtered dataframe
     return df.loc[rows_to_keep].reset_index(drop=True)
