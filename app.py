@@ -505,6 +505,50 @@ def extract_state_from_url(url):
     return None
 
 
+def filter_old_dates(df):
+    """Filter out tournaments with dates from 2025 or earlier (only if year is specified)."""
+    if df is None or len(df) == 0:
+        return df
+    
+    df = df.copy()
+    
+    # Find the date column
+    col_map = {col.lower().replace(' ', '_'): col for col in df.columns}
+    date_col = col_map.get('date')
+    
+    if not date_col:
+        return df
+    
+    rows_to_keep = []
+    
+    for idx, row in df.iterrows():
+        date_val = row.get(date_col)
+        
+        # If no date, keep the row
+        if pd.isna(date_val) or str(date_val).strip() == '':
+            rows_to_keep.append(idx)
+            continue
+        
+        date_str = str(date_val).strip()
+        
+        # Check if the date contains a year
+        # Look for 4-digit year patterns
+        year_match = re.search(r'\b(20\d{2})\b', date_str)
+        
+        if year_match:
+            year = int(year_match.group(1))
+            # Only keep if year is 2026 or later
+            if year >= 2026:
+                rows_to_keep.append(idx)
+            # If year is 2025 or earlier, skip this row (don't add to rows_to_keep)
+        else:
+            # No year specified in the date, keep the row
+            rows_to_keep.append(idx)
+    
+    # Return filtered dataframe
+    return df.loc[rows_to_keep].reset_index(drop=True)
+
+
 def apply_url_based_defaults(df, source_url=None):
     """Apply category and state defaults based on URL when values are missing."""
     if df is None or len(df) == 0:
@@ -781,6 +825,9 @@ def process_url_with_ai(url, api_key):
     
     # Step 5: Apply URL-based defaults for missing Category and State
     cleaned_df = apply_url_based_defaults(cleaned_df, source_url=url)
+    
+    # Step 6: Filter out tournaments with dates from 2025 or earlier
+    cleaned_df = filter_old_dates(cleaned_df)
     
     return cleaned_df
 
