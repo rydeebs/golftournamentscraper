@@ -376,71 +376,129 @@ def extract_state_from_url(url):
     url_lower = str(url).lower()
     
     # Map of URL patterns to state abbreviations
-    state_patterns = {
-        'fsga.org': 'FL',  # Florida State Golf Association
-        'georgia': 'GA',
-        'texas': 'TX',
-        'california': 'CA',
-        'arizona': 'AZ',
-        'colorado': 'CO',
-        'newyork': 'NY',
-        'newjersey': 'NJ',
-        'northcarolina': 'NC',
-        'southcarolina': 'SC',
-        'virginia': 'VA',
-        'ohio': 'OH',
-        'michigan': 'MI',
-        'illinois': 'IL',
-        'pennsylvania': 'PA',
-        'massachusetts': 'MA',
-        'washington': 'WA',
-        'oregon': 'OR',
-        'nevada': 'NV',
-        'tennessee': 'TN',
-        'alabama': 'AL',
-        'louisiana': 'LA',
-        'minnesota': 'MN',
-        'wisconsin': 'WI',
-        'iowa': 'IA',
-        'missouri': 'MO',
-        'kansas': 'KS',
-        'oklahoma': 'OK',
-        'arkansas': 'AR',
-        'mississippi': 'MS',
-        'kentucky': 'KY',
-        'indiana': 'IN',
-        'maryland': 'MD',
-        'connecticut': 'CT',
-        'utah': 'UT',
-        'newmexico': 'NM',
-        'hawaii': 'HI',
-        'alaska': 'AK',
-        'maine': 'ME',
-        'vermont': 'VT',
-        'newhampshire': 'NH',
-        'rhodeisland': 'RI',
-        'delaware': 'DE',
-        'westvirginia': 'WV',
-        'montana': 'MT',
-        'idaho': 'ID',
-        'wyoming': 'WY',
-        'northdakota': 'ND',
-        'southdakota': 'SD',
-        'nebraska': 'NE',
-        # Common state golf association patterns
-        'gsga': 'GA',  # Georgia State Golf Association
-        'tsga': 'TX',  # Texas State Golf Association
-        'scga': 'CA',  # Southern California Golf Association
-        'ncga': 'CA',  # Northern California Golf Association
-        'azga': 'AZ',  # Arizona Golf Association
-        'cga': 'CO',   # Colorado Golf Association
-        'mga': 'MN',   # Minnesota Golf Association (also could be Metropolitan)
-        'wsga': 'WA',  # Washington State Golf Association (also Wisconsin)
-        'oga': 'OR',   # Oregon Golf Association
-        'wpga': 'WI',  # Wisconsin PGA
-    }
+    # Priority order: specific domain patterns first, then general patterns
+    state_patterns = [
+        # Specific state golf association domains (check these first)
+        ('fsga.org', 'FL'),      # Florida State Golf Association
+        ('txga.org', 'TX'),      # Texas Golf Association
+        ('tga.org', 'TX'),       # Texas Golf Association (alternate)
+        ('gsga.org', 'GA'),      # Georgia State Golf Association
+        ('scga.org', 'CA'),      # Southern California Golf Association
+        ('ncga.org', 'CA'),      # Northern California Golf Association
+        ('azga.org', 'AZ'),      # Arizona Golf Association
+        ('aga.org', 'AZ'),       # Arizona Golf Association (alternate)
+        ('cga.org', 'CO'),       # Colorado Golf Association
+        ('wsga.org', 'WA'),      # Washington State Golf Association
+        ('oga.org', 'OR'),       # Oregon Golf Association
+        ('mga.org', 'MN'),       # Minnesota Golf Association
+        ('gam.org', 'MI'),       # Golf Association of Michigan
+        ('cdga.org', 'IL'),      # Chicago District Golf Association
+        ('iga.org', 'IL'),       # Illinois Golf Association
+        ('njsga.org', 'NJ'),     # New Jersey State Golf Association
+        ('nysga.org', 'NY'),     # New York State Golf Association
+        ('mga.org', 'NY'),       # Metropolitan Golf Association (NY area)
+        ('vsga.org', 'VA'),      # Virginia State Golf Association
+        ('carolinasgolf.org', 'NC'),  # Carolinas Golf Association
+        ('tennessegolf.org', 'TN'),   # Tennessee Golf Association
+        ('ohiogolf.org', 'OH'),       # Ohio Golf Association
+        ('indianagolf.org', 'IN'),    # Indiana Golf Association
+        ('kygolf.org', 'KY'),         # Kentucky Golf Association
+        ('missourigolf.org', 'MO'),   # Missouri Golf Association
+        ('iowagolf.org', 'IA'),       # Iowa Golf Association
+        ('nebgolf.org', 'NE'),        # Nebraska Golf Association
+        ('kansasgolf.org', 'KS'),     # Kansas Golf Association
+        ('okgolf.org', 'OK'),         # Oklahoma Golf Association
+        ('arkansasgolf.org', 'AR'),   # Arkansas Golf Association
+        ('msgolf.org', 'MS'),         # Mississippi Golf Association
+        ('algolf.org', 'AL'),         # Alabama Golf Association
+        ('lgagolf.org', 'LA'),        # Louisiana Golf Association
+        ('snga.org', 'NV'),           # Southern Nevada Golf Association
+        ('utahgolf.org', 'UT'),       # Utah Golf Association
+        ('nmga.org', 'NM'),           # New Mexico Golf Association
+        ('hsgagolf.org', 'HI'),       # Hawaii State Golf Association
+        ('agagolf.org', 'AK'),        # Alaska Golf Association
+        ('megagolf.org', 'ME'),       # Maine Golf Association
+        ('vtga.org', 'VT'),           # Vermont Golf Association
+        ('nhga.org', 'NH'),           # New Hampshire Golf Association
+        ('riga.org', 'RI'),           # Rhode Island Golf Association
+        ('dsga.org', 'DE'),           # Delaware State Golf Association
+        ('wvga.org', 'WV'),           # West Virginia Golf Association
+        ('msgagolf.org', 'MT'),       # Montana State Golf Association
+        ('theiga.org', 'ID'),         # Idaho Golf Association
+        ('wga.org', 'WY'),            # Wyoming Golf Association
+        ('ndga.org', 'ND'),           # North Dakota Golf Association
+        ('sdga.org', 'SD'),           # South Dakota Golf Association
+        ('wiscgolf.org', 'WI'),       # Wisconsin State Golf Association
+        ('wpga.org', 'WI'),           # Wisconsin PGA
+        ('massgolf.org', 'MA'),       # Massachusetts Golf Association
+        ('ctga.org', 'CT'),           # Connecticut Golf Association
+        ('mdga.org', 'MD'),           # Maryland State Golf Association
+        ('pagolf.org', 'PA'),         # Pennsylvania Golf Association
+        
+        # State name patterns in URL
+        ('florida', 'FL'),
+        ('texas', 'TX'),
+        ('georgia', 'GA'),
+        ('california', 'CA'),
+        ('arizona', 'AZ'),
+        ('colorado', 'CO'),
+        ('newyork', 'NY'),
+        ('new-york', 'NY'),
+        ('newjersey', 'NJ'),
+        ('new-jersey', 'NJ'),
+        ('northcarolina', 'NC'),
+        ('north-carolina', 'NC'),
+        ('southcarolina', 'SC'),
+        ('south-carolina', 'SC'),
+        ('virginia', 'VA'),
+        ('ohio', 'OH'),
+        ('michigan', 'MI'),
+        ('illinois', 'IL'),
+        ('pennsylvania', 'PA'),
+        ('massachusetts', 'MA'),
+        ('washington', 'WA'),
+        ('oregon', 'OR'),
+        ('nevada', 'NV'),
+        ('tennessee', 'TN'),
+        ('alabama', 'AL'),
+        ('louisiana', 'LA'),
+        ('minnesota', 'MN'),
+        ('wisconsin', 'WI'),
+        ('iowa', 'IA'),
+        ('missouri', 'MO'),
+        ('kansas', 'KS'),
+        ('oklahoma', 'OK'),
+        ('arkansas', 'AR'),
+        ('mississippi', 'MS'),
+        ('kentucky', 'KY'),
+        ('indiana', 'IN'),
+        ('maryland', 'MD'),
+        ('connecticut', 'CT'),
+        ('utah', 'UT'),
+        ('newmexico', 'NM'),
+        ('new-mexico', 'NM'),
+        ('hawaii', 'HI'),
+        ('alaska', 'AK'),
+        ('maine', 'ME'),
+        ('vermont', 'VT'),
+        ('newhampshire', 'NH'),
+        ('new-hampshire', 'NH'),
+        ('rhodeisland', 'RI'),
+        ('rhode-island', 'RI'),
+        ('delaware', 'DE'),
+        ('westvirginia', 'WV'),
+        ('west-virginia', 'WV'),
+        ('montana', 'MT'),
+        ('idaho', 'ID'),
+        ('wyoming', 'WY'),
+        ('northdakota', 'ND'),
+        ('north-dakota', 'ND'),
+        ('southdakota', 'SD'),
+        ('south-dakota', 'SD'),
+        ('nebraska', 'NE'),
+    ]
     
-    for pattern, state in state_patterns.items():
+    for pattern, state in state_patterns:
         if pattern in url_lower:
             return state
     
