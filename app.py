@@ -346,6 +346,154 @@ def clean_tournament_data(df):
     return cleaned_df
 
 
+def extract_category_from_url(url):
+    """Extract tournament category from URL patterns."""
+    if not url or pd.isna(url):
+        return None
+    
+    url_lower = str(url).lower()
+    
+    # Check for category indicators in URL
+    if any(keyword in url_lower for keyword in ['women', 'ladies', 'female', 'lpga', 'womens']):
+        return "Women's"
+    elif any(keyword in url_lower for keyword in ['senior', 'seniors', 'sr-', 'super-senior']):
+        return 'Senior'
+    elif any(keyword in url_lower for keyword in ['junior', 'juniors', 'jr-', 'youth', 'boys', 'girls']):
+        return 'Junior'
+    elif any(keyword in url_lower for keyword in ['amateur', 'am-']):
+        return "Men's Amateur"
+    elif any(keyword in url_lower for keyword in ['men', 'mens', 'male']):
+        return "Men's"
+    
+    return None
+
+
+def extract_state_from_url(url):
+    """Extract state from URL patterns."""
+    if not url or pd.isna(url):
+        return None
+    
+    url_lower = str(url).lower()
+    
+    # Map of URL patterns to state abbreviations
+    state_patterns = {
+        'fsga.org': 'FL',  # Florida State Golf Association
+        'georgia': 'GA',
+        'texas': 'TX',
+        'california': 'CA',
+        'arizona': 'AZ',
+        'colorado': 'CO',
+        'newyork': 'NY',
+        'newjersey': 'NJ',
+        'northcarolina': 'NC',
+        'southcarolina': 'SC',
+        'virginia': 'VA',
+        'ohio': 'OH',
+        'michigan': 'MI',
+        'illinois': 'IL',
+        'pennsylvania': 'PA',
+        'massachusetts': 'MA',
+        'washington': 'WA',
+        'oregon': 'OR',
+        'nevada': 'NV',
+        'tennessee': 'TN',
+        'alabama': 'AL',
+        'louisiana': 'LA',
+        'minnesota': 'MN',
+        'wisconsin': 'WI',
+        'iowa': 'IA',
+        'missouri': 'MO',
+        'kansas': 'KS',
+        'oklahoma': 'OK',
+        'arkansas': 'AR',
+        'mississippi': 'MS',
+        'kentucky': 'KY',
+        'indiana': 'IN',
+        'maryland': 'MD',
+        'connecticut': 'CT',
+        'utah': 'UT',
+        'newmexico': 'NM',
+        'hawaii': 'HI',
+        'alaska': 'AK',
+        'maine': 'ME',
+        'vermont': 'VT',
+        'newhampshire': 'NH',
+        'rhodeisland': 'RI',
+        'delaware': 'DE',
+        'westvirginia': 'WV',
+        'montana': 'MT',
+        'idaho': 'ID',
+        'wyoming': 'WY',
+        'northdakota': 'ND',
+        'southdakota': 'SD',
+        'nebraska': 'NE',
+        # Common state golf association patterns
+        'gsga': 'GA',  # Georgia State Golf Association
+        'tsga': 'TX',  # Texas State Golf Association
+        'scga': 'CA',  # Southern California Golf Association
+        'ncga': 'CA',  # Northern California Golf Association
+        'azga': 'AZ',  # Arizona Golf Association
+        'cga': 'CO',   # Colorado Golf Association
+        'mga': 'MN',   # Minnesota Golf Association (also could be Metropolitan)
+        'wsga': 'WA',  # Washington State Golf Association (also Wisconsin)
+        'oga': 'OR',   # Oregon Golf Association
+        'wpga': 'WI',  # Wisconsin PGA
+    }
+    
+    for pattern, state in state_patterns.items():
+        if pattern in url_lower:
+            return state
+    
+    return None
+
+
+def apply_url_based_defaults(df, source_url=None):
+    """Apply category and state defaults based on URL when values are missing."""
+    if df is None or len(df) == 0:
+        return df
+    
+    df = df.copy()
+    
+    # Normalize column names for checking
+    col_map = {col.lower().replace(' ', '_'): col for col in df.columns}
+    
+    category_col = col_map.get('category')
+    state_col = col_map.get('state')
+    source_col = col_map.get('source_url')
+    
+    # Determine the URL to use for inference
+    def get_url_for_row(row):
+        if source_col and pd.notna(row.get(source_col)):
+            return row[source_col]
+        return source_url
+    
+    # Apply category defaults
+    if category_col:
+        for idx, row in df.iterrows():
+            current_category = row.get(category_col)
+            if pd.isna(current_category) or str(current_category).strip() == '':
+                url = get_url_for_row(row)
+                # Try to get category from URL
+                url_category = extract_category_from_url(url)
+                if url_category:
+                    df.at[idx, category_col] = url_category
+                else:
+                    # Default to Men's if no category can be determined
+                    df.at[idx, category_col] = "Men's"
+    
+    # Apply state defaults
+    if state_col:
+        for idx, row in df.iterrows():
+            current_state = row.get(state_col)
+            if pd.isna(current_state) or str(current_state).strip() == '':
+                url = get_url_for_row(row)
+                url_state = extract_state_from_url(url)
+                if url_state:
+                    df.at[idx, state_col] = url_state
+    
+    return df
+
+
 def get_csv_download_link(df, filename="cleaned_tournament_data.csv"):
     """Generate a download link for CSV file."""
     csv = df.to_csv(index=False)
@@ -572,6 +720,9 @@ def process_url_with_ai(url, api_key):
     # Step 4: Convert to DataFrame and clean
     df = pd.DataFrame(tournaments)
     cleaned_df = clean_tournament_data(df)
+    
+    # Step 5: Apply URL-based defaults for missing Category and State
+    cleaned_df = apply_url_based_defaults(cleaned_df, source_url=url)
     
     return cleaned_df
 
