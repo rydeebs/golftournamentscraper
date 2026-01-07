@@ -4,6 +4,17 @@ import re
 from datetime import datetime
 import io
 import base64
+import requests
+from bs4 import BeautifulSoup
+import json
+from openai import OpenAI
+
+# --- Page Config ---
+st.set_page_config(
+    page_title="Golf Tournament Data Cleaner",
+    page_icon="⛳",
+    layout="wide"
+)
 
 # --- Data Cleaning Functions ---
 
@@ -352,14 +363,167 @@ def get_excel_download_link(df, filename="cleaned_tournament_data.xlsx"):
     return f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}" class="download-btn">📥 Download Excel</a>'
 
 
+# --- URL Scraping with AI ---
+
+def fetch_page_content(url):
+    """Fetch HTML content from a URL."""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        st.error(f"Error fetching URL: {str(e)}")
+        return None
+
+
+def extract_text_from_html(html_content):
+    """Extract readable text from HTML, focusing on tables and lists."""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Remove script and style elements
+    for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+        element.decompose()
+    
+    # Try to find tables first (most tournament data is in tables)
+    tables = soup.find_all('table')
+    table_text = ""
+    for table in tables:
+        rows = table.find_all('tr')
+        for row in rows:
+            cells = row.find_all(['td', 'th'])
+            row_text = ' | '.join(cell.get_text(strip=True) for cell in cells)
+            if row_text.strip():
+                table_text += row_text + '\n'
+    
+    # Also get list items and divs that might contain tournament info
+    list_items = soup.find_all(['li', 'div'], class_=lambda x: x and any(
+        keyword in str(x).lower() for keyword in ['tournament', 'event', 'schedule', 'item', 'row', 'card']
+    ))
+    list_text = ""
+    for item in list_items[:50]:  # Limit to avoid too much noise
+        text = item.get_text(strip=True)
+        if len(text) > 20 and len(text) < 500:  # Filter out too short or too long items
+            list_text += text + '\n'
+    
+    # Get the page title for context
+    title = soup.title.string if soup.title else ""
+    
+    # Combine all extracted text
+    combined_text = f"Page Title: {title}\n\n"
+    if table_text:
+        combined_text += "TABLE DATA:\n" + table_text + "\n\n"
+    if list_text:
+        combined_text += "LIST/CARD DATA:\n" + list_text
+    
+    # If no structured data found, get main content text
+    if not table_text and not list_text:
+        main_content = soup.find('main') or soup.find('body')
+        if main_content:
+            combined_text += main_content.get_text(separator='\n', strip=True)
+    
+    # Limit text length to avoid token limits
+    return combined_text[:15000]
+
+
+def parse_tournaments_with_ai(text_content, api_key):
+    """Use OpenAI to parse tournament data from text."""
+    
+    client = OpenAI(api_key=api_key)
+    
+    prompt = """You are a data extraction expert. Extract golf tournament information from the following webpage content.
+
+For each tournament found, extract:
+- date: The tournament date (any format found)
+- name: The tournament name
+- course: The golf course or venue name
+- category: The category if mentioned (Senior, Men's, Women's, Junior, etc.)
+- city: The city
+- state: The state
+- zip: The ZIP code if available
+
+Return the data as a JSON array of objects. If a field is not found, use null.
+Only include actual tournaments, not navigation items, headers, or other non-tournament content.
+If no tournaments are found, return an empty array [].
+
+Example output format:
+[
+  {"date": "May 15, 2025", "name": "Senior Championship", "course": "Pine Valley Golf Club", "category": "Senior", "city": "Clementon", "state": "NJ", "zip": "08021"},
+  {"date": "June 3, 2025", "name": "Junior Open", "course": "Augusta National", "category": "Junior", "city": "Augusta", "state": "GA", "zip": null}
+]
+
+Webpage content:
+"""
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a precise data extraction assistant. Always respond with valid JSON only, no markdown formatting or explanation."},
+                {"role": "user", "content": prompt + text_content}
+            ],
+            temperature=0.1,
+            max_tokens=4000
+        )
+        
+        result = response.choices[0].message.content.strip()
+        
+        # Clean up the response - remove markdown code blocks if present
+        if result.startswith('```'):
+            result = re.sub(r'^```(?:json)?\n?', '', result)
+            result = re.sub(r'\n?```$', '', result)
+        
+        # Parse JSON
+        tournaments = json.loads(result)
+        return tournaments
+        
+    except json.JSONDecodeError as e:
+        st.error(f"Error parsing AI response: {str(e)}")
+        st.text("Raw response:")
+        st.code(result)
+        return []
+    except Exception as e:
+        st.error(f"Error calling OpenAI API: {str(e)}")
+        return []
+
+
+def process_url_with_ai(url, api_key):
+    """Full pipeline: fetch URL, extract text, parse with AI, clean data."""
+    
+    # Step 1: Fetch the page
+    with st.spinner("Fetching webpage..."):
+        html_content = fetch_page_content(url)
+        if not html_content:
+            return None
+    
+    # Step 2: Extract text
+    with st.spinner("Extracting content..."):
+        text_content = extract_text_from_html(html_content)
+        if not text_content or len(text_content) < 100:
+            st.warning("Could not extract meaningful content from the page. The page might require JavaScript to load.")
+            return None
+    
+    # Step 3: Parse with AI
+    with st.spinner("AI is analyzing the content..."):
+        tournaments = parse_tournaments_with_ai(text_content, api_key)
+        if not tournaments:
+            st.warning("No tournaments found on this page.")
+            return None
+    
+    # Step 4: Convert to DataFrame and clean
+    df = pd.DataFrame(tournaments)
+    cleaned_df = clean_tournament_data(df)
+    
+    return cleaned_df
+
+
 # --- Streamlit UI ---
 def main():
-    st.set_page_config(
-        page_title="Golf Tournament Data Cleaner",
-        page_icon="⛳",
-        layout="wide"
-    )
-    
     # Custom CSS
     st.markdown("""
         <style>
@@ -393,173 +557,194 @@ def main():
             border-radius: 10px;
             border-left: 4px solid #1e5631;
         }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 24px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            padding: 10px 20px;
+            font-weight: 600;
+        }
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<p class="main-header">⛳ Golf Tournament Data Cleaner</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Upload a CSV file with tournament data to clean and standardize it.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="main-header">⛳ Golf Tournament Data Extractor</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Extract and clean tournament data from URLs or CSV files.</p>', unsafe_allow_html=True)
     
-    # Sidebar with instructions
+    # Sidebar
     with st.sidebar:
-        st.header("📋 Instructions")
-        st.markdown("""
-        **Expected Columns:**
-        - **Date** - Tournament date
-        - **Name** - Tournament name
-        - **Course** - Golf course name
-        - **Category** - Senior, Men's, Women's, Junior, etc.
-        - **City** - City name
-        - **State** - State (name or abbreviation)
-        - **Zip** - ZIP code
+        st.header("⚙️ Settings")
         
-        **What gets cleaned:**
-        - Dates → YYYY-MM-DD format
-        - States → 2-letter abbreviations
-        - ZIP codes → 5-digit format
-        - Names → Remove *FULL*, extra spaces
-        - Categories → Standardized labels
-        """)
+        # API Key input
+        api_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Required for URL parsing. Get your key at platform.openai.com"
+        )
+        
+        if api_key:
+            st.success("✓ API key provided")
+        else:
+            st.info("Enter API key to enable URL parsing")
         
         st.divider()
-        st.markdown("**💡 Tips:**")
+        
+        st.header("📋 Instructions")
         st.markdown("""
-        - Column names are matched flexibly
-        - Missing columns will be added
-        - Categories are auto-detected from names
+        **Option 1: URL Parsing (AI)**
+        - Enter a tournament schedule URL
+        - AI extracts tournament data automatically
+        - Works with most golf tournament websites
+        
+        **Option 2: CSV Upload**
+        - Upload your own CSV file
+        - Data gets cleaned and standardized
+        
+        **Columns extracted:**
+        - Date, Name, Course
+        - Category, City, State, Zip
         """)
     
-    # File uploader
-    uploaded_file = st.file_uploader(
-        "Choose a CSV file",
-        type=['csv'],
-        help="Upload a CSV file containing tournament data"
-    )
+    # Main content with tabs
+    tab1, tab2 = st.tabs(["🌐 Parse from URL", "📄 Upload CSV"])
     
-    if uploaded_file is not None:
-        try:
-            # Read the CSV file
-            df = pd.read_csv(uploaded_file)
-            
-            # Display original data
-            st.subheader("📄 Original Data")
-            st.dataframe(df, use_container_width=True, height=300)
-            
-            # Show original stats
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Rows", len(df))
-            with col2:
-                st.metric("Total Columns", len(df.columns))
-            with col3:
-                st.metric("Columns Found", ", ".join(df.columns[:4]) + ("..." if len(df.columns) > 4 else ""))
-            
-            st.divider()
-            
-            # Clean the data
-            with st.spinner("Cleaning data..."):
-                cleaned_df = clean_tournament_data(df)
-            
-            # Display cleaned data
-            st.subheader("✨ Cleaned Data")
-            st.dataframe(cleaned_df, use_container_width=True, height=400)
-            
-            # Show cleaning stats
-            st.markdown("### 📊 Cleaning Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                valid_dates = cleaned_df['Date'].notna().sum()
-                st.markdown(f"""
-                <div class="stats-box">
-                    <strong>Valid Dates</strong><br>
-                    {valid_dates} / {len(cleaned_df)}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                valid_names = cleaned_df['Name'].notna().sum()
-                st.markdown(f"""
-                <div class="stats-box">
-                    <strong>Valid Names</strong><br>
-                    {valid_names} / {len(cleaned_df)}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                valid_states = cleaned_df['State'].notna().sum()
-                st.markdown(f"""
-                <div class="stats-box">
-                    <strong>Valid States</strong><br>
-                    {valid_states} / {len(cleaned_df)}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                valid_categories = cleaned_df['Category'].notna().sum()
-                st.markdown(f"""
-                <div class="stats-box">
-                    <strong>Categories Found</strong><br>
-                    {valid_categories} / {len(cleaned_df)}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Category breakdown
-            if valid_categories > 0:
-                st.markdown("### 🏷️ Category Breakdown")
-                category_counts = cleaned_df['Category'].value_counts()
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.dataframe(category_counts.reset_index().rename(columns={'index': 'Category', 'Category': 'Count'}))
-                with col2:
-                    st.bar_chart(category_counts)
-            
-            st.divider()
-            
-            # Download options
-            st.subheader("📥 Download Cleaned Data")
-            
-            col1, col2, col3 = st.columns([1, 1, 2])
-            
-            with col1:
-                st.markdown(get_csv_download_link(cleaned_df), unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(get_excel_download_link(cleaned_df), unsafe_allow_html=True)
-            
-            # Preview of changes
-            with st.expander("🔍 View Side-by-Side Comparison"):
-                comparison_col1, comparison_col2 = st.columns(2)
-                with comparison_col1:
-                    st.markdown("**Original**")
-                    st.dataframe(df.head(10), use_container_width=True)
-                with comparison_col2:
-                    st.markdown("**Cleaned**")
-                    st.dataframe(cleaned_df.head(10), use_container_width=True)
-                    
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-            st.exception(e)
-    
-    else:
-        # Show sample data format
-        st.info("👆 Upload a CSV file to get started")
+    # --- TAB 1: URL Parsing ---
+    with tab1:
+        st.markdown("### Enter a tournament schedule URL")
         
-        with st.expander("📋 See example CSV format"):
-            sample_data = pd.DataFrame({
-                'Date': ['5/15/2025', 'June 3, 2025', '2025-07-20'],
-                'Name': ['Senior Championship *FULL*', 'Junior Open', "Women's Amateur Classic"],
-                'Course': ['Pine Valley GC', 'Augusta National Golf Club', 'Pebble Beach'],
-                'Category': ['', '', ''],
-                'City': ['Clementon', 'Augusta', 'Pebble Beach'],
-                'State': ['New Jersey', 'GA', 'California'],
-                'Zip': ['08021', '30904', '93953']
-            })
-            st.dataframe(sample_data, use_container_width=True)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            url = st.text_input(
+                "URL",
+                placeholder="https://www.fsga.org/tournaments/schedule...",
+                label_visibility="collapsed"
+            )
+        with col2:
+            parse_button = st.button("🔍 Extract Data", type="primary", use_container_width=True)
+        
+        # Example URLs
+        with st.expander("📌 Example URLs"):
+            example_urls = [
+                "https://www.fsga.org/TournamentCategory/EnterList/d99ad47f-2e7d-4ff4-8a32-c5b1eb315d28?year=2025",
+                "https://wpga-onlineregistration.golfgenius.com/pages/1264528",
+                "https://usamtour.bluegolf.com/bluegolf/usamtour25/schedule/index.htm",
+            ]
+            for ex_url in example_urls:
+                st.code(ex_url, language=None)
+        
+        if parse_button:
+            if not url:
+                st.error("Please enter a URL")
+            elif not api_key:
+                st.error("Please enter your OpenAI API key in the sidebar")
+            else:
+                result_df = process_url_with_ai(url, api_key)
+                
+                if result_df is not None and len(result_df) > 0:
+                    st.session_state['url_results'] = result_df
+                    st.success(f"✅ Found {len(result_df)} tournaments!")
+        
+        # Display results
+        if 'url_results' in st.session_state and st.session_state['url_results'] is not None:
+            df = st.session_state['url_results']
             
-            st.markdown("**After cleaning, this becomes:**")
-            cleaned_sample = clean_tournament_data(sample_data)
-            st.dataframe(cleaned_sample, use_container_width=True)
+            st.markdown("### 📊 Extracted Tournament Data")
+            st.dataframe(df, use_container_width=True, height=400)
+            
+            # Stats
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Tournaments", len(df))
+            with col2:
+                valid_dates = df['Date'].notna().sum()
+                st.metric("Valid Dates", f"{valid_dates}/{len(df)}")
+            with col3:
+                valid_courses = df['Course'].notna().sum()
+                st.metric("Valid Courses", f"{valid_courses}/{len(df)}")
+            with col4:
+                categories = df['Category'].notna().sum()
+                st.metric("Categories Found", f"{categories}/{len(df)}")
+            
+            # Download buttons
+            st.markdown("### 📥 Download")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(get_csv_download_link(df, "tournament_data.csv"), unsafe_allow_html=True)
+            with col2:
+                st.markdown(get_excel_download_link(df, "tournament_data.xlsx"), unsafe_allow_html=True)
+    
+    # --- TAB 2: CSV Upload ---
+    with tab2:
+        st.markdown("### Upload a CSV file with tournament data")
+        
+        uploaded_file = st.file_uploader(
+            "Choose a CSV file",
+            type=['csv'],
+            help="Upload a CSV file containing tournament data"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Read the CSV file
+                df = pd.read_csv(uploaded_file)
+                
+                # Display original data
+                st.markdown("### 📄 Original Data")
+                st.dataframe(df, use_container_width=True, height=250)
+                
+                # Clean the data
+                with st.spinner("Cleaning data..."):
+                    cleaned_df = clean_tournament_data(df)
+                
+                # Display cleaned data
+                st.markdown("### ✨ Cleaned Data")
+                st.dataframe(cleaned_df, use_container_width=True, height=350)
+                
+                # Stats
+                st.markdown("### 📊 Cleaning Summary")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    valid_dates = cleaned_df['Date'].notna().sum()
+                    st.metric("Valid Dates", f"{valid_dates}/{len(cleaned_df)}")
+                
+                with col2:
+                    valid_names = cleaned_df['Name'].notna().sum()
+                    st.metric("Valid Names", f"{valid_names}/{len(cleaned_df)}")
+                
+                with col3:
+                    valid_states = cleaned_df['State'].notna().sum()
+                    st.metric("Valid States", f"{valid_states}/{len(cleaned_df)}")
+                
+                with col4:
+                    valid_categories = cleaned_df['Category'].notna().sum()
+                    st.metric("Categories", f"{valid_categories}/{len(cleaned_df)}")
+                
+                # Download options
+                st.markdown("### 📥 Download Cleaned Data")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(get_csv_download_link(cleaned_df), unsafe_allow_html=True)
+                with col2:
+                    st.markdown(get_excel_download_link(cleaned_df), unsafe_allow_html=True)
+                    
+            except Exception as e:
+                st.error(f"Error processing file: {str(e)}")
+        
+        else:
+            st.info("👆 Upload a CSV file to get started")
+            
+            with st.expander("📋 See example CSV format"):
+                sample_data = pd.DataFrame({
+                    'Date': ['5/15/2025', 'June 3, 2025', '2025-07-20'],
+                    'Name': ['Senior Championship *FULL*', 'Junior Open', "Women's Amateur Classic"],
+                    'Course': ['Pine Valley GC', 'Augusta National Golf Club', 'Pebble Beach'],
+                    'Category': ['', '', ''],
+                    'City': ['Clementon', 'Augusta', 'Pebble Beach'],
+                    'State': ['New Jersey', 'GA', 'California'],
+                    'Zip': ['08021', '30904', '93953']
+                })
+                st.dataframe(sample_data, use_container_width=True)
 
 
 if __name__ == "__main__":
