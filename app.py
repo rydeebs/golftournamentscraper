@@ -122,39 +122,53 @@ def clean_course(course_str):
 
 
 def extract_category(row):
-    """Extract tournament category from name or dedicated column."""
-    # Check if category column exists and has a value
-    if 'category' in row.index and pd.notna(row.get('category')) and str(row.get('category')).strip():
-        cat = str(row['category']).strip()
-        # Standardize existing categories
-        cat_lower = cat.lower()
-        if 'senior' in cat_lower or 'sr' in cat_lower:
-            return 'Senior'
-        elif 'junior' in cat_lower or 'jr' in cat_lower or 'youth' in cat_lower:
-            return 'Junior'
-        elif 'women' in cat_lower or 'ladies' in cat_lower or 'female' in cat_lower:
-            return "Women's"
-        elif 'amateur' in cat_lower:
-            return "Men's Amateur"
-        elif 'men' in cat_lower or 'male' in cat_lower:
-            return "Men's"
-        return cat  # Return as-is if already a valid category
-    
-    # Try to extract from name
+    """Extract tournament category (Senior, Amateur, Junior, All) from name or dedicated column."""
+    # Get text to analyze
     name = str(row.get('name', '')).lower() if pd.notna(row.get('name')) else ""
     
-    if re.search(r'\bjunior\b|\bjr\.?\b|\byouth\b|\bboys\b|\bgirls\b', name):
-        return 'Junior'
-    elif re.search(r'\bwomen\'?s\b|\bladies\b|\bfemale\b', name):
-        return "Women's"
-    elif re.search(r'\bsenior\b|\bsr\.?\b|\bsuper.?senior\b', name):
-        return 'Senior'
-    elif re.search(r'\bamateur\b|\bam\b', name):
-        return "Men's Amateur"
-    elif re.search(r'\bmen\'?s\b|\bmale\b', name):
-        return "Men's"
+    # Check if category column exists and has a value
+    if 'category' in row.index and pd.notna(row.get('category')) and str(row.get('category')).strip():
+        cat = str(row['category']).strip().lower()
+        name = name + " " + cat  # Combine for analysis
     
-    return None  # Return None if no category detected
+    # Determine category based on keywords
+    # Check for Super-Senior first (subset of Senior)
+    if re.search(r'\bsuper.?senior\b', name):
+        return 'Super-Senior'
+    elif re.search(r'\bsenior\b|\bsr\.?\b', name):
+        return 'Senior'
+    elif re.search(r'\bjunior\b|\bjr\.?\b|\byouth\b|\bboys\b|\bgirls\b', name):
+        return 'Junior'
+    elif re.search(r'\bamateur\b|\bam\b', name):
+        return 'Amateur'
+    elif re.search(r'\bopen\b|\bchampionship\b|\bfour.?ball\b|\bmatch.?play\b|\bmid.?amateur\b|\bparent.?child\b', name):
+        return 'Open'
+    
+    return 'All'  # Default to 'All' if no specific category detected
+
+
+def extract_gender(row):
+    """Extract gender (Men's, Women's) from name or dedicated column."""
+    # Get text to analyze
+    name = str(row.get('name', '')).lower() if pd.notna(row.get('name')) else ""
+    
+    # Check if category/gender column exists and has a value
+    if 'category' in row.index and pd.notna(row.get('category')) and str(row.get('category')).strip():
+        cat = str(row['category']).strip().lower()
+        name = name + " " + cat
+    if 'gender' in row.index and pd.notna(row.get('gender')) and str(row.get('gender')).strip():
+        gender = str(row['gender']).strip().lower()
+        name = name + " " + gender
+    
+    # Determine gender based on keywords
+    if re.search(r'\bwomen\'?s\b|\bladies\b|\bfemale\b|\bgirls\b|\blpga\b', name):
+        return "Women's"
+    elif re.search(r'\bmen\'?s\b|\bmale\b|\bboys\b', name):
+        return "Men's"
+    elif re.search(r'\bparent.?child\b|\bfamily\b|\bmixed\b', name):
+        return "Mixed"
+    
+    return "Men's"  # Default to Men's if no gender detected
 
 
 def clean_city(city_str):
@@ -298,7 +312,7 @@ def clean_tournament_data(df):
     
     # Map columns to expected names
     column_mapping = {}
-    expected_columns = ['date', 'name', 'course', 'category', 'city', 'state', 'zip']
+    expected_columns = ['date', 'name', 'course', 'category', 'gender', 'city', 'state', 'zip']
     
     for expected in expected_columns:
         match = find_column_match(expected, cleaned_df.columns)
@@ -332,11 +346,14 @@ def clean_tournament_data(df):
     if 'zip' in cleaned_df.columns:
         cleaned_df['zip'] = cleaned_df['zip'].apply(clean_zip)
     
-    # Extract/clean category
+    # Extract category (Senior, Amateur, Junior, Open, All)
     cleaned_df['category'] = cleaned_df.apply(extract_category, axis=1)
     
+    # Extract gender (Men's, Women's, Mixed)
+    cleaned_df['gender'] = cleaned_df.apply(extract_gender, axis=1)
+    
     # Reorder columns
-    final_columns = ['date', 'name', 'course', 'category', 'city', 'state', 'zip']
+    final_columns = ['date', 'name', 'course', 'category', 'gender', 'city', 'state', 'zip']
     other_columns = [col for col in cleaned_df.columns if col not in final_columns]
     cleaned_df = cleaned_df[final_columns + other_columns]
     
@@ -347,23 +364,41 @@ def clean_tournament_data(df):
 
 
 def extract_category_from_url(url):
-    """Extract tournament category from URL patterns."""
+    """Extract tournament category (Senior, Amateur, Junior, Open, All) from URL patterns."""
     if not url or pd.isna(url):
         return None
     
     url_lower = str(url).lower()
     
     # Check for category indicators in URL
-    if any(keyword in url_lower for keyword in ['women', 'ladies', 'female', 'lpga', 'womens']):
-        return "Women's"
-    elif any(keyword in url_lower for keyword in ['senior', 'seniors', 'sr-', 'super-senior']):
+    if any(keyword in url_lower for keyword in ['super-senior', 'supersenior']):
+        return 'Super-Senior'
+    elif any(keyword in url_lower for keyword in ['senior', 'seniors', 'sr-']):
         return 'Senior'
     elif any(keyword in url_lower for keyword in ['junior', 'juniors', 'jr-', 'youth', 'boys', 'girls']):
         return 'Junior'
     elif any(keyword in url_lower for keyword in ['amateur', 'am-']):
-        return "Men's Amateur"
-    elif any(keyword in url_lower for keyword in ['men', 'mens', 'male']):
+        return 'Amateur'
+    elif any(keyword in url_lower for keyword in ['open', 'championship']):
+        return 'Open'
+    
+    return None
+
+
+def extract_gender_from_url(url):
+    """Extract gender (Men's, Women's, Mixed) from URL patterns."""
+    if not url or pd.isna(url):
+        return None
+    
+    url_lower = str(url).lower()
+    
+    # Check for gender indicators in URL
+    if any(keyword in url_lower for keyword in ['women', 'ladies', 'female', 'lpga', 'womens', 'girls']):
+        return "Women's"
+    elif any(keyword in url_lower for keyword in ['men', 'mens', 'male', 'boys']):
         return "Men's"
+    elif any(keyword in url_lower for keyword in ['mixed', 'parent-child', 'family']):
+        return "Mixed"
     
     return None
 
@@ -579,19 +614,36 @@ def apply_url_based_defaults(df, source_url=None):
             return row[source_col]
         return source_url
     
+    # Get gender column
+    gender_col = col_map.get('gender')
+    
     # Apply category defaults
     if category_col:
         for idx, row in df.iterrows():
             current_category = row.get(category_col)
-            if pd.isna(current_category) or str(current_category).strip() == '':
+            if pd.isna(current_category) or str(current_category).strip() == '' or current_category == 'All':
                 url = get_url_for_row(row)
                 # Try to get category from URL
                 url_category = extract_category_from_url(url)
                 if url_category:
                     df.at[idx, category_col] = url_category
+                elif pd.isna(current_category) or str(current_category).strip() == '':
+                    # Default to 'All' if no category can be determined
+                    df.at[idx, category_col] = "All"
+    
+    # Apply gender defaults
+    if gender_col:
+        for idx, row in df.iterrows():
+            current_gender = row.get(gender_col)
+            if pd.isna(current_gender) or str(current_gender).strip() == '':
+                url = get_url_for_row(row)
+                # Try to get gender from URL
+                url_gender = extract_gender_from_url(url)
+                if url_gender:
+                    df.at[idx, gender_col] = url_gender
                 else:
-                    # Default to Men's if no category can be determined
-                    df.at[idx, category_col] = "Men's"
+                    # Default to Men's if no gender can be determined
+                    df.at[idx, gender_col] = "Men's"
     
     # Apply state defaults
     if state_col:
