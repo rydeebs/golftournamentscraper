@@ -788,13 +788,49 @@ def extract_text_from_html(html_content):
     combined_text = '\n'.join(extracted_data)
     
     # Limit text length to avoid token limits (increased to capture more data)
-    return combined_text[:25000]
+    return combined_text[:30000]
 
 
-def parse_tournaments_with_ai(text_content, api_key):
-    """Use OpenAI to parse tournament data from text."""
+def parse_tournaments_with_ai(text_content, api_key, chunk_size=12000):
+    """Use OpenAI to parse tournament data from text. Handles large content by chunking."""
     
     client = OpenAI(api_key=api_key)
+    
+    # If content is very large, process in chunks
+    if len(text_content) > chunk_size:
+        all_tournaments = []
+        chunks = []
+        
+        # Split by lines to avoid cutting mid-tournament
+        lines = text_content.split('\n')
+        current_chunk = ""
+        
+        for line in lines:
+            if len(current_chunk) + len(line) > chunk_size:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = line
+            else:
+                current_chunk += "\n" + line if current_chunk else line
+        
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        st.info(f"Processing {len(chunks)} chunks of content...")
+        
+        for i, chunk in enumerate(chunks):
+            st.text(f"Processing chunk {i+1}/{len(chunks)}...")
+            chunk_tournaments = _parse_single_chunk(client, chunk)
+            if chunk_tournaments:
+                all_tournaments.extend(chunk_tournaments)
+        
+        return all_tournaments
+    else:
+        return _parse_single_chunk(client, text_content)
+
+
+def _parse_single_chunk(client, text_content):
+    """Parse a single chunk of text content with AI."""
     
     prompt = """You are a data extraction expert. Extract ALL golf tournament information from the following webpage content.
 
@@ -836,7 +872,7 @@ Webpage content:
                 {"role": "user", "content": prompt + text_content}
             ],
             temperature=0.1,
-            max_tokens=8000  # Increased to handle more tournaments
+            max_tokens=16000  # Increased to handle more tournaments
         )
         
         result = response.choices[0].message.content.strip()
@@ -846,15 +882,48 @@ Webpage content:
             result = re.sub(r'^```(?:json)?\n?', '', result)
             result = re.sub(r'\n?```$', '', result)
         
-        # Parse JSON
-        tournaments = json.loads(result)
-        return tournaments
+        # Try to parse JSON
+        try:
+            tournaments = json.loads(result)
+            return tournaments
+        except json.JSONDecodeError as e:
+            # Try to fix truncated JSON by finding the last complete object
+            st.warning("Response was truncated. Attempting to recover partial data...")
+            
+            # Try to find the last complete JSON object
+            # Look for the last "}," or "}" that completes an object
+            last_complete = result.rfind('},')
+            if last_complete > 0:
+                # Try to close the array after the last complete object
+                fixed_result = result[:last_complete + 1] + ']'
+                try:
+                    tournaments = json.loads(fixed_result)
+                    st.info(f"Recovered {len(tournaments)} tournaments from truncated response")
+                    return tournaments
+                except json.JSONDecodeError:
+                    pass
+            
+            # Try another approach - find last complete object ending with }
+            last_brace = result.rfind('}')
+            if last_brace > 0:
+                # Count brackets to find valid JSON
+                test_result = result[:last_brace + 1]
+                # Make sure it ends properly
+                if not test_result.rstrip().endswith(']'):
+                    test_result = test_result + ']'
+                try:
+                    tournaments = json.loads(test_result)
+                    st.info(f"Recovered {len(tournaments)} tournaments from truncated response")
+                    return tournaments
+                except json.JSONDecodeError:
+                    pass
+            
+            # If all recovery attempts fail, show error
+            st.error(f"Error parsing AI response: {str(e)}")
+            with st.expander("Show raw response (for debugging)"):
+                st.code(result[:2000] + "..." if len(result) > 2000 else result)
+            return []
         
-    except json.JSONDecodeError as e:
-        st.error(f"Error parsing AI response: {str(e)}")
-        st.text("Raw response:")
-        st.code(result)
-        return []
     except Exception as e:
         st.error(f"Error calling OpenAI API: {str(e)}")
         return []
