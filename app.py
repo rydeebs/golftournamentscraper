@@ -1138,6 +1138,8 @@ def main():
         st.markdown("### Enter tournament schedule URLs")
         st.markdown("*Enter one URL per line to extract data from multiple sources*")
         
+        st.warning("⚠️ **Note:** Some websites (like FSGA) may block cloud servers. If URLs fail here, use the **'📋 Paste Content'** tab instead - it works with any site!")
+        
         urls_input = st.text_area(
             "URLs",
             placeholder="https://www.fsga.org/TournamentCategory/EnterList/...\nhttps://wpga-onlineregistration.golfgenius.com/pages/...\nhttps://usamtour.bluegolf.com/bluegolf/...",
