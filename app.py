@@ -677,21 +677,62 @@ def get_excel_download_link(df, filename="cleaned_tournament_data.xlsx"):
 
 # --- URL Scraping with AI ---
 
-def fetch_page_content(url):
-    """Fetch HTML content from a URL."""
+def fetch_page_content(url, retry_count=2):
+    """Fetch HTML content from a URL with improved headers to avoid blocking."""
+    import time
+    import random
+    
+    # Browser-like headers (without brotli encoding which requests doesn't handle well)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',  # Removed 'br' (brotli) as requests doesn't auto-decode it
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
     }
     
-    try:
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        st.error(f"Error fetching URL: {str(e)}")
-        return None
+    for attempt in range(retry_count + 1):
+        try:
+            # Add a small random delay between requests to avoid rate limiting
+            if attempt > 0:
+                time.sleep(random.uniform(1, 3))
+            
+            # Create a session for better cookie handling
+            session = requests.Session()
+            response = session.get(url, headers=headers, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+            
+            # Check if we got a Cloudflare challenge page
+            if 'Just a moment' in response.text or 'Checking your browser' in response.text:
+                if attempt < retry_count:
+                    st.warning(f"Cloudflare challenge detected (attempt {attempt + 1}/{retry_count + 1}). Retrying...")
+                    time.sleep(2)
+                    continue
+                else:
+                    st.error("Site is protected by Cloudflare and blocking automated access.")
+                    st.info("💡 **Tip:** Use the '📋 Paste Content' tab instead. Copy the page content from your browser and paste it there.")
+                    return None
+            
+            return response.text
+            
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 403 and attempt < retry_count:
+                st.warning(f"Access blocked (attempt {attempt + 1}/{retry_count + 1}). Retrying...")
+                continue
+            st.error(f"Error fetching URL: {str(e)}")
+            st.info("💡 **Tip:** If this site blocks automated access, try using the '📋 Paste Content' tab instead.")
+            return None
+        except requests.RequestException as e:
+            st.error(f"Error fetching URL: {str(e)}")
+            return None
+    
+    return None
 
 
 def extract_text_from_html(html_content):
